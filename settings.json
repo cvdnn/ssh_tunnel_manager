@@ -1,0 +1,10 @@
+{
+  "autostart": false,
+  "minimizeToTray": true,
+  "sshPath": "C:\\Windows\\System32\\OpenSSH\\ssh.exe",
+  "checkInterval": 4,
+  "sshAliases": {
+    "生产环境跳板机": "g",
+    "测试跳板机": "g"
+  }
+}

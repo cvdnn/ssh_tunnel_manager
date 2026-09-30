@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.log
+.review-backup/
+
+# Local tunnel definitions may contain internal hosts and ports.
+tunnels.json
