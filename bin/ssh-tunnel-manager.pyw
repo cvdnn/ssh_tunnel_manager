@@ -8,7 +8,8 @@ import os
 parser = argparse.ArgumentParser(description='SSH Tunnel Manager')
 parser.add_argument('--data-dir', help='运行数据根目录，其下使用 data/ 和 logs/')
 parser.add_argument('--startup-splash', action='store_true', help=argparse.SUPPRESS)
-args = parser.parse_args()
+# macOS/Linux launchers may hand over the opened document path; the entry point ignores it.
+args, _documents = parser.parse_known_args()
 if args.data_dir:
     os.environ['SSH_TUNNEL_MANAGER_HOME'] = str(Path(args.data_dir).expanduser().resolve())
 

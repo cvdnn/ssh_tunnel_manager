@@ -24,13 +24,12 @@ BUILDER = load_module('macos_app_builder', ROOT / 'scripts' / 'make_macos_app.py
 
 
 class MacOSAppTests(unittest.TestCase):
-    def test_plist_binds_executable_and_pyw_document_type(self):
+    def test_plist_binds_executable_without_claiming_any_extension(self):
         payload = BUILDER.bundle_plist(with_icon=True)
         self.assertEqual(payload['CFBundleExecutable'], BUILDER.EXECUTABLE)
         self.assertEqual(payload['CFBundleIconFile'], 'AppIcon')
-        document = payload['CFBundleDocumentTypes'][0]
-        self.assertEqual(document['CFBundleTypeExtensions'], [BUILDER.PYW_EXTENSION])
-        self.assertEqual(document['LSHandlerRank'], 'Owner')
+        # The bundle is the double-click target; claiming .pyw would redirect every such file.
+        self.assertNotIn('CFBundleDocumentTypes', payload)
         self.assertNotIn('CFBundleIconFile', BUILDER.bundle_plist(with_icon=False))
 
     def test_launcher_quotes_paths_and_validates_the_interpreter(self):

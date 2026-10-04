@@ -12,7 +12,19 @@ python3 scripts/dev.py
 .venv/bin/python scripts/test.py
 ```
 
-`scripts/dev.py` 创建项目虚拟环境并安装 requirements.txt 中的依赖。不同系统不能共用同一个 `.venv`。Linux 需安装发行版所需的 Qt 图形运行库和中文字体；无桌面服务器不属于此 GUI 的支持范围。macOS 无边框库会安装其声明的 PyObjC/PyCocoa 依赖。尚未提供原生安装包。
+`scripts/dev.py` 创建项目虚拟环境并安装 requirements.txt 中的依赖。不同系统不能共用同一个 `.venv`。Linux 需安装发行版所需的 Qt 图形运行库和中文字体；无桌面服务器不属于此 GUI 的支持范围。macOS 无边框库会安装其声明的 PyObjC/PyCocoa 依赖。尚未提供自包含的安装包，下文启动器只是指向虚拟环境的入口。
+
+### macOS 双击启动
+
+macOS 没有 `pythonw`，Finder 也不会执行脚本文件，所以 `.pyw` 不能像 Windows 那样直接双击。生成启动器 bundle：
+
+```sh
+.venv/bin/python scripts/make_macos_app.py
+```
+
+默认写入 `~/Applications/SSH Tunnel Manager.app`（`--output` 换目录、`--force` 覆盖、`--no-icon` 跳过图标）。双击该 `.app` 打开界面，可在 Dock 图标右键 →“选项 → 在 Dock 中保留”常驻。bundle 不声明任何扩展名关联——把 `.pyw` 全局指向本程序会改变机器上所有同类文件的行为。
+
+已知边界：启动器记录生成时的解释器与入口绝对路径，移动项目或重建 `.venv` 后必须重跑脚本，解释器缺失时弹原生提示框。签名是 ad-hoc 的，`spctl` 判定为 `rejected`；本机自建文件没有隔离属性可直接双击，压缩分发后首次需右键 →“打开”，要免拦截须用 Developer ID 签名并公证。从启动器运行的进程仍以虚拟环境解释器为可执行文件，Dock 与菜单栏可能显示为 `python`；需要独立图标和应用名请改用真正的打包工具（如 PyInstaller、Briefcase），本仓库暂未提供。
 
 ## 平台行为
 
