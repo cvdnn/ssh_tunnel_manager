@@ -41,9 +41,39 @@ from PySide6.QtWidgets import (
 )
 
 
-# Empty family lets Qt select the desktop font and CJK fallback.
-UI_FONT = "Microsoft YaHei UI" if sys.platform == 'win32' else ""
-MONO_FONT = "Consolas" if sys.platform == 'win32' else ("Menlo" if sys.platform == 'darwin' else "monospace")
+# 按桌面平台选择对应的字体族，同平台按优先级列出，本机缺失的族名由 Qt 自动跳过。
+# 族名不能留空：空字符串在 macOS 上会被解析成 ".Apple Color Emoji UI"，
+# 其全角 ASCII 字形会把 PID、端口和 IP 中的数字与冒号拉开。
+if sys.platform == 'win32':
+    UI_FONT_FAMILIES = ('Microsoft YaHei UI', 'Segoe UI', 'Tahoma')
+    MONO_FONT_FAMILIES = ('Consolas', 'Cascadia Mono', 'Courier New')
+elif sys.platform == 'darwin':
+    UI_FONT_FAMILIES = ('PingFang SC', 'Hiragino Sans GB', 'Helvetica Neue')
+    MONO_FONT_FAMILIES = ('Menlo', 'Monaco', 'Courier')
+else:
+    UI_FONT_FAMILIES = ('Noto Sans CJK SC', 'Source Han Sans SC',
+                        'WenQuanYi Micro Hei', 'Sans Serif')
+    MONO_FONT_FAMILIES = ('Noto Sans Mono CJK SC', 'DejaVu Sans Mono',
+                          'Liberation Mono', 'monospace')
+
+# 当前平台的首选字体族。
+UI_FONT = UI_FONT_FAMILIES[0]
+MONO_FONT = MONO_FONT_FAMILIES[0]
+
+
+def ui_font(size: int, weight: int = QFont.Normal) -> QFont:
+    """当前平台的界面字体，附带拉丁与中日韩字形回退。"""
+    font = QFont(UI_FONT, size, weight)
+    font.setFamilies(list(UI_FONT_FAMILIES))
+    return font
+
+
+def mono_font(size: int, weight: int = QFont.Normal) -> QFont:
+    """当前平台的等宽字体，用于运行日志。"""
+    font = QFont(MONO_FONT, size, weight)
+    font.setFamilies(list(MONO_FONT_FAMILIES))
+    return font
+
 
 # Layout baseline in Qt logical pixels. The real window size is clamped to the
 # screen so the fixed layout also fits small laptop and low-resolution displays
@@ -184,18 +214,18 @@ class StartupSplash(QWidget):
         title_row = QHBoxLayout()
         title_row.setSpacing(8)
         title = QLabel("隧道管家", self)
-        title.setFont(QFont(UI_FONT, 16, QFont.Bold))
+        title.setFont(ui_font(16, QFont.Bold))
         title.setStyleSheet("color: #0f172a;")
         title_row.addWidget(title)
         version_tag = QLabel(APP_VERSION, self)
-        version_tag.setFont(QFont(UI_FONT, 10))
+        version_tag.setFont(ui_font(10))
         version_tag.setStyleSheet("color: #0891b2;")
         title_row.addWidget(version_tag, 0, Qt.AlignBottom)
         title_row.addStretch()
         layout.addLayout(title_row)
         layout.addSpacing(10)
         self.status = QLabel("正在加载界面…", self)
-        self.status.setFont(QFont(UI_FONT, 9))
+        self.status.setFont(ui_font(9))
         self.status.setStyleSheet("color: #64748b;")
         layout.addWidget(self.status)
         layout.addStretch()
@@ -1066,7 +1096,7 @@ class DetectionButton(QPushButton):
     def __init__(self, parent=None):
         super().__init__("检测", parent)
         self.setFixedSize(76, 34)
-        self.setFont(QFont(UI_FONT, 9))
+        self.setFont(ui_font(9))
         self.setCursor(Qt.PointingHandCursor)
 
     def enterEvent(self, event):
@@ -1140,7 +1170,7 @@ class TunnelRowWidget(QFrame):
         # 1.1 SSH 进程 PID
         self.pid_lbl = QLabel("—", self.summary_widget)
         self.pid_lbl.setFixedWidth(70)
-        self.pid_lbl.setFont(QFont(UI_FONT, 9))
+        self.pid_lbl.setFont(ui_font(9))
         self.pid_lbl.setStyleSheet("color: #64748b;")
         self.pid_lbl.setToolTip("当前 SSH 进程 PID；无运行进程时显示 —")
         self.summary_layout.addWidget(self.pid_lbl)
@@ -1187,13 +1217,13 @@ class TunnelRowWidget(QFrame):
 
         self.status_text_lbl = QLabel(status_box)
         self.status_text_lbl.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.status_text_lbl.setFont(QFont(UI_FONT, 9))
+        self.status_text_lbl.setFont(ui_font(9))
         s_layout.addWidget(self.status_text_lbl)
 
         # 1.2 隧道名称
         self.name_lbl = QLabel(self.tunnel.name, self.summary_widget)
         self.name_lbl.setFixedWidth(180)
-        self.name_lbl.setFont(QFont(UI_FONT, 9, QFont.Bold if self.tunnel.enabled else QFont.Normal))
+        self.name_lbl.setFont(ui_font(9, QFont.Bold if self.tunnel.enabled else QFont.Normal))
         self.name_lbl.setStyleSheet("color: #0f172a;" if self.tunnel.enabled else "color: #94a3b8;")
         self.summary_layout.addWidget(self.name_lbl)
 
@@ -1201,7 +1231,7 @@ class TunnelRowWidget(QFrame):
         self.lport_lbl = QLabel(str(self.tunnel.local_port) if self.tunnel.enabled else "-", self.summary_widget)
         self.lport_lbl.setFixedWidth(90)
         self.lport_lbl.setAlignment(Qt.AlignCenter)
-        self.lport_lbl.setFont(QFont(UI_FONT, 9))
+        self.lport_lbl.setFont(ui_font(9))
         self.lport_lbl.setStyleSheet("color: #334155;" if self.tunnel.enabled else "color: #94a3b8;")
         self.summary_layout.addWidget(self.lport_lbl)
 
@@ -1209,14 +1239,14 @@ class TunnelRowWidget(QFrame):
         target_str = f"{self.tunnel.remote_host}:{self.tunnel.remote_port}" if self.tunnel.enabled else "-"
         self.target_lbl = QLabel(target_str, self.summary_widget)
         self.target_lbl.setFixedWidth(180)
-        self.target_lbl.setFont(QFont(UI_FONT, 9))
+        self.target_lbl.setFont(ui_font(9))
         self.target_lbl.setStyleSheet("color: #334155;" if self.tunnel.enabled else "color: #94a3b8;")
         self.summary_layout.addWidget(self.target_lbl)
 
         # 1.5 SSH 连接
         self.ssh_lbl = QLabel(self.tunnel.ssh_host, self.summary_widget)
         self.ssh_lbl.setFixedWidth(110)
-        self.ssh_lbl.setFont(QFont(UI_FONT, 9))
+        self.ssh_lbl.setFont(ui_font(9))
         self.ssh_lbl.setStyleSheet("color: #334155;")
         self.summary_layout.addWidget(self.ssh_lbl)
         self.summary_layout.addWidget(status_column)
@@ -1521,7 +1551,7 @@ class SystemSettingsWorkspace(QFrame):
     def __init__(self, settings: dict, parent=None):
         super().__init__(parent)
         self.setObjectName("settingsWorkspace")
-        self.setFont(QFont(UI_FONT, 9))
+        self.setFont(ui_font(9))
         self.setStyleSheet("""
             QFrame#settingsWorkspace {
                 background: #ffffff;
@@ -1850,12 +1880,12 @@ class MainWindow(FramelessWindow):
         tb.setDoubleClickEnabled(False)
         # 标题、计数、操作与窗口控制共用一行；中间的伸缩空间仍可拖动窗口。
         self.lbl_list_title = SubtitleLabel("端口隧道列表", tb)
-        self.lbl_list_title.setFont(QFont(UI_FONT, 13, QFont.Bold))
+        self.lbl_list_title.setFont(ui_font(13, QFont.Bold))
         self.lbl_list_title.setStyleSheet("color: #0f172a;")
         self.lbl_list_title.setAttribute(Qt.WA_TransparentForMouseEvents)
 
         self.lbl_active_count = QLabel("(0/0)", tb)
-        self.lbl_active_count.setFont(QFont(UI_FONT, 13, QFont.Bold))
+        self.lbl_active_count.setFont(ui_font(13, QFont.Bold))
         self.lbl_active_count.setStyleSheet("color: #16a34a; margin-left: 16px;")
         self.lbl_active_count.setAttribute(Qt.WA_TransparentForMouseEvents)
         tb.hBoxLayout.insertSpacing(0, 24)
@@ -1863,13 +1893,13 @@ class MainWindow(FramelessWindow):
         tb.hBoxLayout.insertWidget(2, self.lbl_active_count, 0, Qt.AlignVCenter)
 
         self.btn_new = PrimaryPushButton(FIF.ADD, "新建隧道", tb)
-        self.btn_new.setFont(QFont(UI_FONT, 9, QFont.Bold))
+        self.btn_new.setFont(ui_font(9, QFont.Bold))
         self.btn_new.setFixedHeight(32)
         self.btn_new.clicked.connect(self.toggle_new_tunnel_workspace)
 
         # 保留 Fluent 的 hasIcon 样式，为图标和文字预留独立空间。
         self.btn_config = PushButton(FIF.SETTING, "系统配置", tb)
-        self.btn_config.setFont(QFont(UI_FONT, 9))
+        self.btn_config.setFont(ui_font(9))
         self.btn_config.setFixedHeight(32)
         self.btn_config.clicked.connect(self.open_system_settings_workspace)
 
@@ -1892,7 +1922,7 @@ class MainWindow(FramelessWindow):
         workspace_title_layout.setContentsMargins(24, 0, 8, 0)
         workspace_title_layout.setSpacing(0)
         self.workspace_title = SubtitleLabel("新建隧道", self.workspace_title_bar)
-        self.workspace_title.setFont(QFont(UI_FONT, 13, QFont.Bold))
+        self.workspace_title.setFont(ui_font(13, QFont.Bold))
         self.workspace_title.setStyleSheet("color: #0f172a; background: transparent;")
         workspace_title_layout.addWidget(self.workspace_title)
         workspace_title_layout.addStretch()
@@ -1963,7 +1993,7 @@ class MainWindow(FramelessWindow):
             lbl = QLabel(name, header)
             lbl.setFixedWidth(w)
             lbl.setAlignment(align)
-            lbl.setFont(QFont(UI_FONT, 9, QFont.Bold))
+            lbl.setFont(ui_font(9, QFont.Bold))
             lbl.setStyleSheet("color: #64748b; background: transparent; border: none;")
             h_layout.addWidget(lbl)
 
@@ -2015,7 +2045,7 @@ class MainWindow(FramelessWindow):
 
         self.btn_clear_log = PushButton(FIF.DELETE, "清空日志", log_bar)
         self.btn_clear_log.setObjectName("clearLogButton")
-        self.btn_clear_log.setFont(QFont(UI_FONT, 9))
+        self.btn_clear_log.setFont(ui_font(9))
         self.btn_clear_log.setFixedHeight(30)
         self.btn_clear_log.setStyleSheet("""
             PushButton#clearLogButton {
@@ -2041,7 +2071,7 @@ class MainWindow(FramelessWindow):
         self.log_text = TextEdit(self.log_card)
         self.log_text.setReadOnly(True)
         self.log_text.setFixedHeight(120)
-        self.log_text.setFont(QFont(MONO_FONT, 9))
+        self.log_text.setFont(mono_font(9))
         self.log_text.setStyleSheet("""
             TextEdit {
                 background-color: #ffffff;
