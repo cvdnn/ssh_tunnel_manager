@@ -11,7 +11,7 @@ import tempfile
 APP_ID = 'ssh-tunnel-manager'
 APP_DISPLAY_NAME = '隧道管家'
 # 版本号规则：从 v1 开始，每次发布整数递增（v1、v2、v3…）。发布时只改 APP_VERSION_MAJOR。
-APP_VERSION_MAJOR = 1
+APP_VERSION_MAJOR = 2
 APP_VERSION = 'v{}'.format(APP_VERSION_MAJOR)  # 界面、日志和产物文件名使用的版本标签
 BUNDLE_VERSION = str(APP_VERSION_MAJOR)  # Info.plist 与 Inno Setup 的版本字段只接受数字
 LAUNCH_LABEL = 'local.ssh-tunnel-manager'
@@ -127,6 +127,35 @@ def set_autostart(enable, command):
     except (OSError, ValueError) as error:
         print(f'设置登录自启失败：{error}')
         return False
+
+
+def hide_dock_icon():
+    """把当前 GUI 进程降级为附属应用，让它不再占用一个 Dock 图块。
+
+    启动页与主窗口是两个进程，默认各自申请一个图块，看起来就像同时出现了
+    两个应用图标；附属应用仍可显示窗口，只是没有图块和菜单栏。
+    """
+    if sys.platform != 'darwin':
+        return False
+    import ctypes
+
+    try:
+        runtime = ctypes.CDLL('/usr/lib/libobjc.dylib')
+        runtime.objc_getClass.restype = ctypes.c_void_p
+        runtime.objc_getClass.argtypes = (ctypes.c_char_p,)
+        runtime.sel_registerName.restype = ctypes.c_void_p
+        runtime.sel_registerName.argtypes = (ctypes.c_char_p,)
+        runtime.objc_msgSend.restype = ctypes.c_void_p
+        runtime.objc_msgSend.argtypes = (ctypes.c_void_p, ctypes.c_void_p)
+        shared = runtime.objc_msgSend(runtime.objc_getClass(b'NSApplication'),
+                                      runtime.sel_registerName(b'sharedApplication'))
+        # NSApplicationActivationPolicyAccessory；未创建应用对象时 sharedApplication 为空，直接失败。
+        runtime.objc_msgSend.restype = ctypes.c_bool
+        runtime.objc_msgSend.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long)
+    except (OSError, AttributeError):
+        return False
+    return bool(shared) and runtime.objc_msgSend(shared,
+                                                 runtime.sel_registerName(b'setActivationPolicy:'), 1)
 
 
 def show_error(message):

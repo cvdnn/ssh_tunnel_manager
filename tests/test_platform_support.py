@@ -130,6 +130,21 @@ class PlatformSupportTests(unittest.TestCase):
             self.assertEqual(file.read_bytes(), original)
             self.assertEqual(len(list(file.parent.iterdir())), 1)
 
+    def test_dock_icon_hidden_only_for_macos_processes(self):
+        platform = self.adapter()
+        with patch.object(platform.sys, 'platform', 'linux'):
+            self.assertFalse(platform.hide_dock_icon())
+        with patch.object(platform.sys, 'platform', 'darwin'), patch('ctypes.CDLL') as library:
+            library.return_value.sel_registerName.side_effect = lambda selector: selector
+            self.assertTrue(platform.hide_dock_icon())
+            sent = [call.args for call in library.return_value.objc_msgSend.call_args_list]
+            self.assertIn(b'sharedApplication', [args[1] for args in sent])
+            # NSApplicationActivationPolicyAccessory keeps the window without a Dock tile.
+            self.assertEqual(sent[-1][1], b'setActivationPolicy:')
+            self.assertEqual(sent[-1][2], 1)
+        with patch.object(platform.sys, 'platform', 'darwin'), patch('ctypes.CDLL', side_effect=OSError('missing')):
+            self.assertFalse(platform.hide_dock_icon())
+
     def test_startup_error_uses_the_native_mechanism_of_each_desktop(self):
         platform = self.adapter()
         for system, launcher in (('darwin', 'osascript'), ('linux', 'notify-send')):

@@ -335,6 +335,8 @@ def run_startup_splash():
     """管道 EOF 同时处理正常交接和父进程异常退出。"""
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv)
+    # 启动页与主窗口分属两个进程，不降级的话 macOS 的 Dock 会同时出现两个图标。
+    platform_support.hide_dock_icon()
     splash = StartupSplash()
 
     class StartupMessages(QObject):
