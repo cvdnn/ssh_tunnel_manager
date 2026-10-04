@@ -24,6 +24,12 @@ BUILDER = load_module('macos_app_builder', ROOT / 'scripts' / 'make_macos_app.py
 
 
 class MacOSAppTests(unittest.TestCase):
+    def test_plist_version_follows_the_release_version(self):
+        import platform_support
+        payload = BUILDER.bundle_plist(with_icon=False)
+        self.assertEqual(payload['CFBundleShortVersionString'], platform_support.BUNDLE_VERSION)
+        self.assertEqual(payload['CFBundleVersion'], platform_support.BUNDLE_VERSION)
+
     def test_plist_binds_executable_without_claiming_any_extension(self):
         payload = BUILDER.bundle_plist(with_icon=True)
         self.assertEqual(payload['CFBundleExecutable'], BUILDER.EXECUTABLE)

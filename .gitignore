@@ -6,6 +6,9 @@ __pycache__/
 data/
 logs/
 
+# Bundles built by scripts/build_app.py (PyInstaller output lives inside).
+release/
+
 # Local tunnel definitions may contain internal hosts and ports.
 tunnels.json
 ssh_connections.json

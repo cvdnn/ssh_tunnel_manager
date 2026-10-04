@@ -10,9 +10,18 @@ import tempfile
 
 APP_ID = 'ssh-tunnel-manager'
 APP_DISPLAY_NAME = '隧道管家'
+# 版本号规则：从 v1 开始，每次发布整数递增（v1、v2、v3…）。发布时只改 APP_VERSION_MAJOR。
+APP_VERSION_MAJOR = 1
+APP_VERSION = 'v{}'.format(APP_VERSION_MAJOR)  # 界面、日志和产物文件名使用的版本标签
+BUNDLE_VERSION = str(APP_VERSION_MAJOR)  # Info.plist 与 Inno Setup 的版本字段只接受数字
 LAUNCH_LABEL = 'local.ssh-tunnel-manager'
 REG_RUN_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
 REG_ITEM_NAME = 'SshTunnelManager'
+
+
+def is_frozen():
+    """True inside a packaged bundle: no source checkout, and no console on Windows."""
+    return bool(getattr(sys, 'frozen', False))
 
 
 def process_creation_flags():

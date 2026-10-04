@@ -45,6 +45,15 @@ class TunnelTests(unittest.TestCase):
             splash.close()
             splash.deleteLater()
 
+    def test_startup_splash_shows_the_release_version(self):
+        splash = tm.StartupSplash()
+        try:
+            labels = [label.text() for label in splash.findChildren(tm.QLabel)]
+            self.assertIn(tm.APP_VERSION, labels)
+        finally:
+            splash.close()
+            splash.deleteLater()
+
     def test_startup_splash_has_complete_outer_border(self):
         splash = tm.StartupSplash()
         try:

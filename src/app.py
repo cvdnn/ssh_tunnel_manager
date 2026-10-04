@@ -23,10 +23,10 @@ from copy import deepcopy
 
 from paths import ROOT, BIN_FILE, CONFIG_FILE as DATA_CONFIG_FILE
 from paths import SETTINGS_FILE as DATA_SETTINGS_FILE, LOG_FILE as DATA_LOG_FILE
-from paths import LOGO_FILE as ASSET_LOGO_FILE
+from paths import LOGO_FILE as ASSET_LOGO_FILE, argument_value, ensure_runtime_dirs
 from paths import RUNTIME_HOME
 import platform_support
-from platform_support import process_creation_flags, is_autostart_enabled
+from platform_support import process_creation_flags, is_autostart_enabled, APP_VERSION
 
 from ssh_connections import (discover_hosts, connection_args, load_connections,
                              save_connections, atomic_write_json, validate_connection)
@@ -52,6 +52,23 @@ MAIN_WIDTH = 1100
 MAIN_HEIGHT = 660
 WORKSPACE_WIDTH = 420
 MIN_WORKSPACE_WIDTH = 320
+
+SPLASH_PORT_ARGUMENT = "--splash-port"
+SPLASH_BACKLOG_TIMEOUT = 5  # 父进程等待启动页连回来的上限（秒）。
+SPLASH_CONNECT_TIMEOUT = 5  # 启动页连回父进程的上限（秒）。
+
+
+def self_launch_arguments(executable):
+    """重新拉起自身的命令前缀：打包后应用自身即入口，源码运行还要带上 bin 入口。"""
+    return [executable] if platform_support.is_frozen() else [executable, str(BIN_FILE)]
+
+
+def splash_channel_port():
+    """打包后的启动页通过回环端口接收状态，源码运行返回 0 表示继续用标准输入。"""
+    try:
+        return max(0, int(argument_value(SPLASH_PORT_ARGUMENT)))
+    except ValueError:
+        return 0
 
 
 def layout_widths(expanded=False, screen=None):
@@ -164,10 +181,18 @@ class StartupSplash(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(0)
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
         title = QLabel("隧道管家", self)
         title.setFont(QFont(UI_FONT, 16, QFont.Bold))
         title.setStyleSheet("color: #0f172a;")
-        layout.addWidget(title)
+        title_row.addWidget(title)
+        version_tag = QLabel(APP_VERSION, self)
+        version_tag.setFont(QFont(UI_FONT, 10))
+        version_tag.setStyleSheet("color: #0891b2;")
+        title_row.addWidget(version_tag, 0, Qt.AlignBottom)
+        title_row.addStretch()
+        layout.addLayout(title_row)
         layout.addSpacing(10)
         self.status = QLabel("正在加载界面…", self)
         self.status.setFont(QFont(UI_FONT, 9))
@@ -195,25 +220,83 @@ def show_main_window(app, window, splash):
 
 
 class StartupSplashProcess:
-    """启动页独立运行，重型导入和主窗口构造不会阻塞其事件循环。"""
+    """启动页独立运行，重型导入和主窗口构造不会阻塞其事件循环。
+
+    源码运行用子进程的标准输入传状态；打包后（Windows 无控制台时子进程没有 stdin）
+    改用只监听回环地址的一次性 socket，父进程关闭连接即表示启动页该结束。
+    """
 
     def __init__(self):
+        self.socket_channel = platform_support.is_frozen()
+        self.listener = None
+        self.connection = None
+        self.pending = []
+        self.closed = False
+        self.lock = threading.Lock()
+        arguments = self_launch_arguments(sys.executable) + ["--startup-splash"]
+        if self.socket_channel:
+            self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.listener.bind(("127.0.0.1", 0))
+            self.listener.listen(1)
+            self.listener.settimeout(SPLASH_BACKLOG_TIMEOUT)
+            arguments += [SPLASH_PORT_ARGUMENT, str(self.listener.getsockname()[1])]
         self.process = subprocess.Popen(
-            [sys.executable, str(BIN_FILE), "--startup-splash"],
-            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            arguments,
+            stdin=subprocess.DEVNULL if self.socket_channel else subprocess.PIPE,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             text=True, encoding="utf-8", creationflags=process_creation_flags(),
         )
+        if self.socket_channel:
+            threading.Thread(target=self._accept_channel, daemon=True).start()
+
+    def _accept_channel(self):
+        """接受启动页的连接，并补发等待期间产生的状态文本。"""
+        try:
+            connection, _ = self.listener.accept()
+        except OSError:
+            return  # 启动页没能连回来，主窗口照常继续启动。
+        with self.lock:
+            if self.closed:
+                pending, abandon = [], True
+            else:
+                self.connection, pending, abandon = connection, self.pending, False
+                self.pending = []
+        if abandon:
+            connection.close()
+            return
+        try:
+            for line in pending:
+                connection.sendall(line)
+        except OSError:
+            pass
 
     def set_status(self, text):
+        line = text.replace("\n", " ").encode("utf-8") + b"\n"
         try:
-            self.process.stdin.write(text.replace("\n", " ") + "\n")
-            self.process.stdin.flush()
+            if self.socket_channel:
+                with self.lock:
+                    if self.connection is None:
+                        self.pending.append(line)
+                    else:
+                        self.connection.sendall(line)
+            else:
+                self.process.stdin.write(text.replace("\n", " ") + "\n")
+                self.process.stdin.flush()
         except (OSError, ValueError):
             pass  # 启动页提前退出不影响主窗口启动。
 
     def close(self):
         try:
-            self.process.stdin.close()
+            if self.socket_channel:
+                with self.lock:
+                    self.closed = True
+                    connection, self.connection = self.connection, None
+                if connection is not None:
+                    connection.close()
+                if self.listener is not None:
+                    self.listener.close()
+            else:
+                self.process.stdin.close()
         except OSError:
             pass
 
@@ -234,8 +317,7 @@ def run_startup_splash():
 
     def read_parent():
         try:
-            # 使用独立无缓冲句柄，提前关闭窗口时后台读取不会锁住 sys.stdin。
-            with os.fdopen(os.dup(sys.stdin.fileno()), "rb", buffering=0) as pipe:
+            with _parent_status_channel() as pipe:
                 for line in pipe:
                     messages.status.emit(line.decode("utf-8").rstrip("\r\n"))
         finally:
@@ -245,6 +327,23 @@ def run_startup_splash():
     reader = threading.Thread(target=read_parent, daemon=True)
     reader.start()
     return app.exec()
+
+
+def _parent_status_channel():
+    """启动页读取父进程状态的通道：打包后连回环端口，源码运行复用标准输入。"""
+    port = splash_channel_port()
+    if not port:
+        # 使用独立无缓冲句柄，提前关闭窗口时后台读取不会锁住 sys.stdin。
+        return os.fdopen(os.dup(sys.stdin.fileno()), "rb", buffering=0)
+    connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    connection.settimeout(SPLASH_CONNECT_TIMEOUT)
+    try:
+        connection.connect(("127.0.0.1", port))
+    except OSError:
+        connection.close()
+        raise
+    connection.settimeout(None)
+    return connection.makefile("rb")
 
 
 _startup_splash = None
@@ -304,8 +403,8 @@ def get_pythonw_path():
 
 
 def set_autostart(enable: bool):
-    return platform_support.set_autostart(enable, [get_pythonw_path(), str(BIN_FILE),
-                                                 '--data-dir', str(RUNTIME_HOME)])
+    return platform_support.set_autostart(enable, self_launch_arguments(get_pythonw_path()) +
+                                          ['--data-dir', str(RUNTIME_HOME)])
 
 
 def client_host(host):
@@ -1537,6 +1636,10 @@ class SystemSettingsWorkspace(QFrame):
         self.btn_quit.clicked.connect(self.quit_requested.emit)
         layout.addWidget(self.btn_quit)
 
+        version_label = CaptionLabel(f"版本 {APP_VERSION}", self)
+        version_label.setStyleSheet("color: #64748b;")
+        layout.addWidget(version_label)
+
         layout.addStretch()
 
         btn_box = QHBoxLayout()
@@ -1601,7 +1704,7 @@ class MainWindow(FramelessWindow):
     """固定尺寸的隧道管家主窗口，保留拖动、最小化及关闭到托盘。"""
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(APP_NAME)
+        self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
         self.setWindowIcon(create_app_logo_icon())
         self._main_width, _ = layout_widths(False)
         self._workspace_width = layout_widths(True)[1]
@@ -2400,7 +2503,7 @@ class MainWindow(FramelessWindow):
             self._startup_held = {t for t in self.tunnels if t.enabled}
             self.log("已关闭启动自动连接；手动重连可启动隧道。")
             return
-        self.log("隧道管家服务已启动，开始建立 SSH 连接…")
+        self.log(f"隧道管家 {APP_VERSION} 服务已启动，开始建立 SSH 连接…")
         total = len(self.tunnels)
         for idx, t in enumerate(self.tunnels):
             num_tag = f"[{idx+1}/{total}]"
@@ -2449,6 +2552,14 @@ class MainWindow(FramelessWindow):
 
 
 def main():
+    if platform_support.is_frozen():
+        # 打包入口不经过 bootstrap.launch()，运行目录在这里准备；只读安装位置要提示用户。
+        try:
+            ensure_runtime_dirs()
+        except OSError as error:
+            platform_support.show_error('无法创建运行目录：\n' + str(error) +
+                                        '\n\n请用 --data-dir 指定一个可写目录。')
+            return 1
     app = QApplication.instance()
     if app is None:
         QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)

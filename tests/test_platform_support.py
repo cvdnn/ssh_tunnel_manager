@@ -16,6 +16,14 @@ class PlatformSupportTests(unittest.TestCase):
         self.assertIsNotNone(importlib.util.find_spec('platform_support'), 'platform adapter is missing')
         return importlib.import_module('platform_support')
 
+    def test_release_version_is_an_integer_starting_at_v1(self):
+        platform = self.adapter()
+        self.assertIsInstance(platform.APP_VERSION_MAJOR, int)
+        self.assertGreaterEqual(platform.APP_VERSION_MAJOR, 1)
+        # 发布标签由整数版本推导，递增只改 APP_VERSION_MAJOR 一处。
+        self.assertEqual(platform.APP_VERSION, 'v{}'.format(platform.APP_VERSION_MAJOR))
+        self.assertEqual(platform.BUNDLE_VERSION, str(platform.APP_VERSION_MAJOR))
+
     def test_posix_process_flags_and_ssh_lookup(self):
         platform = self.adapter()
         for system in ('darwin', 'linux'):

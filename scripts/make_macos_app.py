@@ -19,10 +19,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / 'src') not in sys.path:
     sys.path.insert(0, str(ROOT / 'src'))
 
-from platform_support import APP_DISPLAY_NAME  # noqa: E402
+from platform_support import APP_DISPLAY_NAME, BUNDLE_VERSION  # noqa: E402
 
 APP_NAME = 'SSH Tunnel Manager'
-BUNDLE_VERSION = '1.0'
 BUNDLE_IDENTIFIER = 'local.ssh-tunnel-manager.app'
 EXECUTABLE = 'ssh-tunnel-manager'
 ICON_SIZES = (16, 32, 128, 256, 512)

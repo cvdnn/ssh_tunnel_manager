@@ -4,6 +4,10 @@ SSH 本地端口转发桌面工具，使用 PySide6、QFluentWidgets 和系统 O
 
 macOS/Linux 的安装、数据目录、自启方式与验证边界见 [跨平台运行说明](docs/cross-platform.md)。新安装默认将数据保存到用户目录；已有项目 `data/` 配置继续沿用。下文 `data/`、`logs/` 均相对于选定的运行数据根目录。
 
+## 版本号
+
+版本从 `v1` 开始按整数递增（`v1`、`v2`、`v3`……），唯一来源是 `src/platform_support.py` 的 `APP_VERSION_MAJOR`，发布时只改这一行。界面（启动页、窗口标题、“系统配置 → 常规”）、启动日志和 `scripts/build_app.py` 的产物文件名使用该整数推导出的 `v<N>` 标签；`Info.plist` 与 Inno Setup 的版本字段只接受数字，使用同一整数的数字形式。
+
 ## 安装与启动
 
 需要桌面环境、Python 和 OpenSSH 客户端。本次验证环境为 Python 3.12，GUI 依赖版本固定在 `requirements.txt`。以下为 Windows 操作。Fluent 与无边框窗口的包名分别是 [PySide6-Fluent-Widgets](https://pypi.org/project/PySide6-Fluent-Widgets/) 和 [PySideSix-Frameless-Window](https://pypi.org/project/PySideSix-Frameless-Window/)。
@@ -25,6 +29,31 @@ python -m venv .venv
 启动页在独立轻量进程中显示连续滑动动画，避免界面库加载和主窗口初始化造成进度条停顿；主窗口显示后自动关闭启动页。滑动条表示正在加载，不代表完成百分比。
 
 SSH 认证由 OpenSSH 和用户 `~/.ssh/config` 管理（Windows 为 `%USERPROFILE%\.ssh\config`）。程序使用 `BatchMode=yes`，不弹出密码输入框；请先配置可非交互登录的密钥或 SSH agent。
+
+## 打包为可双击应用
+
+`scripts/build_app.py` 用 PyInstaller 把当前虚拟环境的解释器、`requirements.txt` 的 GUI 依赖和 `src/` 源码冻结成一个自包含应用：目标机器不需要安装 Python，也不需要再下载任何库。PyInstaller 不能交叉打包，请在 macOS 上生成 `.app`、在 Windows 上生成 `.exe`。
+
+```sh
+# macOS
+.venv/bin/python scripts/build_app.py --install --dmg --smoke-test
+```
+
+```powershell
+# Windows（PowerShell）
+.\scripts\package.ps1 --install --installer --smoke-test
+```
+
+产物写入 `release/`（Git 忽略）：
+
+| 系统 | 双击入口 | 分发文件 |
+|---|---|---|
+| macOS | `SSH Tunnel Manager.app` | `SSH-Tunnel-Manager-<版本>-macos.zip`；`--dmg` 另出拖拽安装盘 |
+| Windows | `SSH Tunnel Manager\SSH Tunnel Manager.exe` | `SSH-Tunnel-Manager-<版本>-windows.zip`；`--installer` 且构建机装有 Inno Setup 时另出 `...-installer.exe` |
+
+打包版仍按“数据目录”规则读写用户目录，用 `--data-dir "绝对目录"` 可改到便携位置。其他开关：`--output`、`--name`、`--version`、`--no-icon`、`--no-archive`、`--smoke-test`（用临时数据目录启动产物，写出启动日志才算通过）、`--install`（缺少 PyInstaller 时代为安装）。
+
+打包版只含界面与隧道逻辑，OpenSSH 客户端仍使用系统自带的 `ssh`/`ssh.exe`，需在目标机器上可用；首次连接的主机密钥也要先用 OpenSSH 接受。macOS 产物仅 ad-hoc 签名，拷到另一台 Mac 首次打开需右键 →“打开”，免提示需 Developer ID 签名并公证。`scripts/make_macos_app.py` 生成的轻量启动器仍适合源码调试，它指向虚拟环境、不含依赖。
 
 ## 功能
 
