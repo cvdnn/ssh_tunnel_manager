@@ -9,6 +9,7 @@ import sys
 import tempfile
 
 APP_ID = 'ssh-tunnel-manager'
+APP_DISPLAY_NAME = '隧道管家'
 LAUNCH_LABEL = 'local.ssh-tunnel-manager'
 REG_RUN_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
 REG_ITEM_NAME = 'SshTunnelManager'
@@ -117,3 +118,23 @@ def set_autostart(enable, command):
     except (OSError, ValueError) as error:
         print(f'设置登录自启失败：{error}')
         return False
+
+
+def show_error(message):
+    """Show a startup error with the native dialog of each desktop system."""
+    try:
+        if sys.platform == 'win32':
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, message, APP_DISPLAY_NAME, 0x10)
+        elif sys.platform == 'darwin':
+            script = ('on run argv\n'
+                      '  display alert (item 1 of argv) message (item 2 of argv)\n'
+                      'end run')
+            subprocess.run([
+                'osascript', '-e', script, APP_DISPLAY_NAME, message],
+                creationflags=process_creation_flags(), check=False)
+        elif shutil.which('notify-send'):
+            subprocess.run(['notify-send', APP_DISPLAY_NAME, message],
+                           creationflags=process_creation_flags(), check=False)
+    except (OSError, ImportError, AttributeError) as error:
+        print(f'显示错误提示失败：{error}')

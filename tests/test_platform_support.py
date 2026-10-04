@@ -87,7 +87,8 @@ class PlatformSupportTests(unittest.TestCase):
                 (root / 'data/tunnels.json').write_text('[]')
                 self.assertEqual(paths.runtime_home(root), root)
                 with patch.dict(os.environ, {'SSH_TUNNEL_MANAGER_HOME': str(Path(folder) / 'custom')}):
-                    self.assertEqual(paths.runtime_home(root), Path(folder) / 'custom')
+                    # runtime_home resolves symlinks, which macOS temp directories are made of.
+                    self.assertEqual(paths.runtime_home(root), Path(folder).resolve() / 'custom')
 
     def test_fresh_runtime_homes_and_invalid_xdg_fallback(self):
         import paths
@@ -120,3 +121,25 @@ class PlatformSupportTests(unittest.TestCase):
                 self.assertFalse(platform.set_autostart(True, ['/python', '/new.py']))
             self.assertEqual(file.read_bytes(), original)
             self.assertEqual(len(list(file.parent.iterdir())), 1)
+
+    def test_startup_error_uses_the_native_mechanism_of_each_desktop(self):
+        platform = self.adapter()
+        for system, launcher in (('darwin', 'osascript'), ('linux', 'notify-send')):
+            with self.subTest(system=system), patch.object(platform.sys, 'platform', system), \
+                    patch.object(platform.shutil, 'which', return_value='/usr/bin/notify-send'), \
+                    patch.object(platform.subprocess, 'run') as run:
+                platform.show_error('需要迁移')
+                arguments = run.call_args.args[0]
+                self.assertEqual(arguments[0], launcher)
+                self.assertEqual(arguments[-1], '需要迁移')
+        with patch.object(platform.sys, 'platform', 'win32'), patch.object(platform.subprocess, 'run') as run:
+            platform.show_error('需要迁移')
+            run.assert_not_called()
+
+    def test_startup_error_without_a_desktop_notifier_only_prints(self):
+        platform = self.adapter()
+        with patch.object(platform.sys, 'platform', 'linux'), \
+                patch.object(platform.shutil, 'which', return_value=None), \
+                patch.object(platform.subprocess, 'run') as run:
+            platform.show_error('需要迁移')
+            run.assert_not_called()

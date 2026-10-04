@@ -107,13 +107,18 @@ class StatusIconTests(unittest.TestCase):
             row.close()
             row.deleteLater()
 
+    def highlight_test_button(self, row):
+        """Focus rings depend on OS window activation; pin the shared highlight state."""
+        row.test_btn.setFocus()
+        row.test_btn.setAttribute(tm.Qt.WA_UnderMouse, True)
+        self.app.processEvents()
+
     def test_detection_focus_has_soft_fill_without_outline_and_busy_keeps_text(self):
         item = tunnel()
         row = tm.TunnelRowWidget(0, item)
         try:
             row.show()
-            row.test_btn.setFocus()
-            self.app.processEvents()
+            self.highlight_test_button(row)
             before = row.test_btn.grab().toImage()
             self.assertEqual(before.pixelColor(0, 15).alpha(), 0)
             self.assertEqual(before.pixelColor(3, 15), tm.QColor("#ecfeff"))
@@ -121,7 +126,7 @@ class StatusIconTests(unittest.TestCase):
                 item.activity = activity
                 row._update_status_display()
                 if activity is None:
-                    row.test_btn.setFocus()
+                    self.highlight_test_button(row)
                 self.app.processEvents()
                 after = row.test_btn.grab().toImage()
                 # 左侧包含文字和背景，右侧预留给唯一变化的加载环。

@@ -3,17 +3,14 @@ from pathlib import Path
 import tempfile
 from unittest.mock import patch
 
-from support import tm, ROOT
+from support import tm, ROOT, register_preview_fonts
 from PySide6.QtCore import QEvent
-from PySide6.QtGui import QFontDatabase
 from PySide6.QtTest import QTest
 
 
 def main():
     app = tm.QApplication.instance() or tm.QApplication([])
-    # The offscreen platform needs fonts registered explicitly on Windows.
-    for name in ("segoeui.ttf", "msyh.ttc", "msyhbd.ttc", "consola.ttf"):
-        QFontDatabase.addApplicationFont(str(Path("C:/Windows/Fonts") / name))
+    register_preview_fonts()
     output = ROOT / "artifacts" / "ui" / f"scale-{app.devicePixelRatio():g}"
     output.mkdir(parents=True, exist_ok=True)
     splash = tm.StartupSplash()

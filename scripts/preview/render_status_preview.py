@@ -1,16 +1,13 @@
 """Render the actual Item widgets in all stages; no live connections."""
-from pathlib import Path
-from support import tm, tunnel, ROOT
-from PySide6.QtGui import QFontDatabase
+from support import tm, tunnel, ROOT, register_preview_fonts
 
 app = tm.QApplication.instance() or tm.QApplication([])
-for name in ("segoeui.ttf", "msyh.ttc", "msyhbd.ttc", "consola.ttf"):
-    QFontDatabase.addApplicationFont(str(Path("C:/Windows/Fonts") / name))
+register_preview_fonts()
 panel = tm.QWidget()
 panel.setStyleSheet("background: #f8fafc;")
 layout = tm.QVBoxLayout(panel)
 heading = tm.QLabel("隧道状态 · 异步连接与检测")
-heading.setFont(tm.QFont("Microsoft YaHei UI", 14))
+heading.setFont(tm.QFont(tm.UI_FONT, 14))
 layout.addWidget(heading)
 states = [
     ("等待后台任务", "Disconnected", "start", "queued", 0),

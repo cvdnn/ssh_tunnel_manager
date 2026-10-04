@@ -1,20 +1,16 @@
 """Render connection settings with temporary fixtures and no SSH execution."""
 import json
-import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from support import tm, ROOT
-from PySide6.QtGui import QFontDatabase
+from support import tm, ROOT, register_preview_fonts
 from PySide6.QtCore import Qt, QEvent
 
 
 def main():
     app = tm.QApplication.instance() or tm.QApplication([])
-    font_dir = Path(os.environ.get("SystemRoot", "C:/Windows")) / "Fonts"
-    for name in ("segoeui.ttf", "msyh.ttc", "msyhbd.ttc", "consola.ttf"):
-        QFontDatabase.addApplicationFont(str(font_dir / name))
+    register_preview_fonts()
     output = ROOT / "artifacts" / "ui" / "connections"
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as folder:
