@@ -12,10 +12,8 @@ import sys
 import json
 import time
 import socket
-import winreg
 import subprocess
 import threading
-import ctypes
 import atexit
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +24,9 @@ from copy import deepcopy
 from paths import ROOT, BIN_FILE, CONFIG_FILE as DATA_CONFIG_FILE
 from paths import SETTINGS_FILE as DATA_SETTINGS_FILE, LOG_FILE as DATA_LOG_FILE
 from paths import LOGO_FILE as ASSET_LOGO_FILE
+from paths import RUNTIME_HOME
+import platform_support
+from platform_support import process_creation_flags, is_autostart_enabled
 
 from ssh_connections import (discover_hosts, connection_args, load_connections,
                              save_connections, atomic_write_json, validate_connection)
@@ -38,6 +39,11 @@ from PySide6.QtWidgets import (
     QFrame, QScrollArea, QFileDialog, QSystemTrayIcon, QGridLayout, QMenu,
     QSizePolicy, QProgressBar, QPushButton, QTabWidget, QDoubleSpinBox
 )
+
+
+# Empty family lets Qt select the desktop font and CJK fallback.
+UI_FONT = "Microsoft YaHei UI" if sys.platform == 'win32' else ""
+MONO_FONT = "Consolas" if sys.platform == 'win32' else ("Menlo" if sys.platform == 'darwin' else "monospace")
 
 
 class WindowOutline(QWidget):
@@ -127,12 +133,12 @@ class StartupSplash(QWidget):
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(0)
         title = QLabel("隧道管家", self)
-        title.setFont(QFont("Microsoft YaHei UI", 16, QFont.Bold))
+        title.setFont(QFont(UI_FONT, 16, QFont.Bold))
         title.setStyleSheet("color: #0f172a;")
         layout.addWidget(title)
         layout.addSpacing(10)
         self.status = QLabel("正在加载界面…", self)
-        self.status.setFont(QFont("Microsoft YaHei UI", 9))
+        self.status.setFont(QFont(UI_FONT, 9))
         self.status.setStyleSheet("color: #64748b;")
         layout.addWidget(self.status)
         layout.addStretch()
@@ -163,7 +169,7 @@ class StartupSplashProcess:
         self.process = subprocess.Popen(
             [sys.executable, str(BIN_FILE), "--startup-splash"],
             stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            text=True, encoding="utf-8", creationflags=subprocess.CREATE_NO_WINDOW,
+            text=True, encoding="utf-8", creationflags=process_creation_flags(),
         )
 
     def set_status(self, text):
@@ -231,8 +237,6 @@ from qfluentwidgets import (
 
 # 常量定义
 APP_NAME = "隧道管家"
-REG_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-REG_ITEM_NAME = "SshTunnelManager"
 
 BASE_DIR = str(ROOT)
 CONFIG_FILE = str(DATA_CONFIG_FILE)
@@ -258,53 +262,18 @@ def tray_menu_position(cursor, menu_size, screen_rect, available_rect, icon_rect
     return QPoint(x, y)
 
 # 寻找默认 ssh.exe
-DEFAULT_SSH = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "OpenSSH", "ssh.exe")
-if not os.path.exists(DEFAULT_SSH):
-    import shutil
-    found_ssh = shutil.which("ssh")
-    if found_ssh:
-        DEFAULT_SSH = found_ssh
+DEFAULT_SSH = platform_support.default_ssh()
 
 
 # ================= 系统与工具函数 =================
 
 def get_pythonw_path():
-    """获取 pythonw.exe 的绝对路径，用于无黑框静默运行"""
-    exe_dir = os.path.dirname(sys.executable)
-    pyw_candidate = os.path.join(exe_dir, "pythonw.exe")
-    if os.path.exists(pyw_candidate):
-        return pyw_candidate
-    return sys.executable
-
-
-def is_autostart_enabled():
-    """检查是否已开启开机自启动"""
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, REG_RUN_KEY, 0, winreg.KEY_READ) as key:
-            val, _ = winreg.QueryValueEx(key, REG_ITEM_NAME)
-            return bool(val)
-    except OSError:
-        return False
+    return platform_support.gui_python()
 
 
 def set_autostart(enable: bool):
-    """设置或取消开机自启动"""
-    pyw = get_pythonw_path()
-    script_path = str(BIN_FILE)
-    cmd = f'"{pyw}" "{script_path}"'
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, REG_RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
-            if enable:
-                winreg.SetValueEx(key, REG_ITEM_NAME, 0, winreg.REG_SZ, cmd)
-            else:
-                try:
-                    winreg.DeleteValue(key, REG_ITEM_NAME)
-                except OSError:
-                    pass
-        return True
-    except Exception as e:
-        print(f"设置开机启动失败: {e}")
-        return False
+    return platform_support.set_autostart(enable, [get_pythonw_path(), str(BIN_FILE),
+                                                 '--data-dir', str(RUNTIME_HOME)])
 
 
 def client_host(host):
@@ -558,7 +527,7 @@ class TunnelItem:
         self._stderr_lines = deque(maxlen=200)
         self._exit_reported = False
 
-        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        creationflags = process_creation_flags()
         try:
             self.process = subprocess.Popen(
                 args,
@@ -966,7 +935,7 @@ class DetectionButton(QPushButton):
     def __init__(self, parent=None):
         super().__init__("检测", parent)
         self.setFixedSize(76, 34)
-        self.setFont(QFont("Microsoft YaHei UI", 9))
+        self.setFont(QFont(UI_FONT, 9))
         self.setCursor(Qt.PointingHandCursor)
 
     def enterEvent(self, event):
@@ -1040,7 +1009,7 @@ class TunnelRowWidget(QFrame):
         # 1.1 SSH 进程 PID
         self.pid_lbl = QLabel("—", self.summary_widget)
         self.pid_lbl.setFixedWidth(70)
-        self.pid_lbl.setFont(QFont("Microsoft YaHei UI", 9))
+        self.pid_lbl.setFont(QFont(UI_FONT, 9))
         self.pid_lbl.setStyleSheet("color: #64748b;")
         self.pid_lbl.setToolTip("当前 SSH 进程 PID；无运行进程时显示 —")
         self.summary_layout.addWidget(self.pid_lbl)
@@ -1087,13 +1056,13 @@ class TunnelRowWidget(QFrame):
 
         self.status_text_lbl = QLabel(status_box)
         self.status_text_lbl.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.status_text_lbl.setFont(QFont("Microsoft YaHei UI", 9))
+        self.status_text_lbl.setFont(QFont(UI_FONT, 9))
         s_layout.addWidget(self.status_text_lbl)
 
         # 1.2 隧道名称
         self.name_lbl = QLabel(self.tunnel.name, self.summary_widget)
         self.name_lbl.setFixedWidth(180)
-        self.name_lbl.setFont(QFont("Microsoft YaHei UI", 9, QFont.Bold if self.tunnel.enabled else QFont.Normal))
+        self.name_lbl.setFont(QFont(UI_FONT, 9, QFont.Bold if self.tunnel.enabled else QFont.Normal))
         self.name_lbl.setStyleSheet("color: #0f172a;" if self.tunnel.enabled else "color: #94a3b8;")
         self.summary_layout.addWidget(self.name_lbl)
 
@@ -1101,7 +1070,7 @@ class TunnelRowWidget(QFrame):
         self.lport_lbl = QLabel(str(self.tunnel.local_port) if self.tunnel.enabled else "-", self.summary_widget)
         self.lport_lbl.setFixedWidth(90)
         self.lport_lbl.setAlignment(Qt.AlignCenter)
-        self.lport_lbl.setFont(QFont("Microsoft YaHei UI", 9))
+        self.lport_lbl.setFont(QFont(UI_FONT, 9))
         self.lport_lbl.setStyleSheet("color: #334155;" if self.tunnel.enabled else "color: #94a3b8;")
         self.summary_layout.addWidget(self.lport_lbl)
 
@@ -1109,14 +1078,14 @@ class TunnelRowWidget(QFrame):
         target_str = f"{self.tunnel.remote_host}:{self.tunnel.remote_port}" if self.tunnel.enabled else "-"
         self.target_lbl = QLabel(target_str, self.summary_widget)
         self.target_lbl.setFixedWidth(180)
-        self.target_lbl.setFont(QFont("Microsoft YaHei UI", 9))
+        self.target_lbl.setFont(QFont(UI_FONT, 9))
         self.target_lbl.setStyleSheet("color: #334155;" if self.tunnel.enabled else "color: #94a3b8;")
         self.summary_layout.addWidget(self.target_lbl)
 
         # 1.5 SSH 连接
         self.ssh_lbl = QLabel(self.tunnel.ssh_host, self.summary_widget)
         self.ssh_lbl.setFixedWidth(110)
-        self.ssh_lbl.setFont(QFont("Microsoft YaHei UI", 9))
+        self.ssh_lbl.setFont(QFont(UI_FONT, 9))
         self.ssh_lbl.setStyleSheet("color: #334155;")
         self.summary_layout.addWidget(self.ssh_lbl)
         self.summary_layout.addWidget(status_column)
@@ -1212,6 +1181,9 @@ class TunnelRowWidget(QFrame):
         menu = RoundMenu(parent=self)
 
         act_rdp = Action(FIF.CLOUD, "打开远程桌面 (RDP)", self)
+        if sys.platform != 'win32':
+            act_rdp.setEnabled(False)
+            act_rdp.setText("远程桌面：请复制地址到客户端")
         act_rdp.triggered.connect(self._launch_rdp)
         menu.addAction(act_rdp)
 
@@ -1229,6 +1201,8 @@ class TunnelRowWidget(QFrame):
         menu.exec(pos)
 
     def _launch_rdp(self):
+        if sys.platform != 'win32':
+            return
         addr = self.tunnel.local_address
         subprocess.Popen(["mstsc.exe", f"/v:{addr}"])
 
@@ -1416,7 +1390,7 @@ class SystemSettingsWorkspace(QFrame):
     def __init__(self, settings: dict, parent=None):
         super().__init__(parent)
         self.setObjectName("settingsWorkspace")
-        self.setFont(QFont("Microsoft YaHei UI", 9))
+        self.setFont(QFont(UI_FONT, 9))
         self.setStyleSheet("""
             QFrame#settingsWorkspace {
                 background: #ffffff;
@@ -1453,10 +1427,11 @@ class SystemSettingsWorkspace(QFrame):
 
         # 1. 开机自启
         f_auto = QHBoxLayout()
-        lbl_auto = StrongBodyLabel("开机自动启动本服务", self)
+        lbl_auto = StrongBodyLabel("用户登录时自动启动", self)
         f_auto.addWidget(lbl_auto)
         f_auto.addStretch()
         self.sw_auto = SwitchButton(self)
+        self.sw_auto.setToolTip("保存后在下次登录桌面时生效")
         self.sw_auto.setChecked(is_autostart_enabled())
         f_auto.addWidget(self.sw_auto)
         layout.addLayout(f_auto)
@@ -1562,7 +1537,8 @@ class SystemSettingsWorkspace(QFrame):
         self.error_label.clear()
 
     def _browse_ssh(self):
-        f, _ = QFileDialog.getOpenFileName(self, "选择 ssh.exe", filter="Executable (*.exe);;All Files (*.*)")
+        file_filter = "Executable (*.exe);;All Files (*)" if sys.platform == 'win32' else "All Files (*)"
+        f, _ = QFileDialog.getOpenFileName(self, "选择 SSH 可执行文件", filter=file_filter)
         if f:
             self.edit_ssh.setText(f)
 
@@ -1598,7 +1574,8 @@ class MainWindow(FramelessWindow):
         self.setFixedSize(1100, 660)
         self.setResizeEnabled(False)
         self.setWindowFlag(Qt.WindowMaximizeButtonHint, False)
-        self.windowEffect.disableMaximizeButton(self.winId())
+        if sys.platform == 'win32':
+            self.windowEffect.disableMaximizeButton(self.winId())
 
         setTheme(Theme.LIGHT)
         self.setStyleSheet("MainWindow { background-color: #f8fafc; }")
@@ -1736,12 +1713,12 @@ class MainWindow(FramelessWindow):
         tb.setDoubleClickEnabled(False)
         # 标题、计数、操作与窗口控制共用一行；中间的伸缩空间仍可拖动窗口。
         self.lbl_list_title = SubtitleLabel("端口隧道列表", tb)
-        self.lbl_list_title.setFont(QFont("Microsoft YaHei UI", 13, QFont.Bold))
+        self.lbl_list_title.setFont(QFont(UI_FONT, 13, QFont.Bold))
         self.lbl_list_title.setStyleSheet("color: #0f172a;")
         self.lbl_list_title.setAttribute(Qt.WA_TransparentForMouseEvents)
 
         self.lbl_active_count = QLabel("(0/0)", tb)
-        self.lbl_active_count.setFont(QFont("Microsoft YaHei UI", 13, QFont.Bold))
+        self.lbl_active_count.setFont(QFont(UI_FONT, 13, QFont.Bold))
         self.lbl_active_count.setStyleSheet("color: #16a34a; margin-left: 16px;")
         self.lbl_active_count.setAttribute(Qt.WA_TransparentForMouseEvents)
         tb.hBoxLayout.insertSpacing(0, 24)
@@ -1749,13 +1726,13 @@ class MainWindow(FramelessWindow):
         tb.hBoxLayout.insertWidget(2, self.lbl_active_count, 0, Qt.AlignVCenter)
 
         self.btn_new = PrimaryPushButton(FIF.ADD, "新建隧道", tb)
-        self.btn_new.setFont(QFont("Microsoft YaHei UI", 9, QFont.Bold))
+        self.btn_new.setFont(QFont(UI_FONT, 9, QFont.Bold))
         self.btn_new.setFixedHeight(32)
         self.btn_new.clicked.connect(self.toggle_new_tunnel_workspace)
 
         # 保留 Fluent 的 hasIcon 样式，为图标和文字预留独立空间。
         self.btn_config = PushButton(FIF.SETTING, "系统配置", tb)
-        self.btn_config.setFont(QFont("Microsoft YaHei UI", 9))
+        self.btn_config.setFont(QFont(UI_FONT, 9))
         self.btn_config.setFixedHeight(32)
         self.btn_config.clicked.connect(self.open_system_settings_workspace)
 
@@ -1778,7 +1755,7 @@ class MainWindow(FramelessWindow):
         workspace_title_layout.setContentsMargins(24, 0, 8, 0)
         workspace_title_layout.setSpacing(0)
         self.workspace_title = SubtitleLabel("新建隧道", self.workspace_title_bar)
-        self.workspace_title.setFont(QFont("Microsoft YaHei UI", 13, QFont.Bold))
+        self.workspace_title.setFont(QFont(UI_FONT, 13, QFont.Bold))
         self.workspace_title.setStyleSheet("color: #0f172a; background: transparent;")
         workspace_title_layout.addWidget(self.workspace_title)
         workspace_title_layout.addStretch()
@@ -1849,7 +1826,7 @@ class MainWindow(FramelessWindow):
             lbl = QLabel(name, header)
             lbl.setFixedWidth(w)
             lbl.setAlignment(align)
-            lbl.setFont(QFont("Microsoft YaHei UI", 9, QFont.Bold))
+            lbl.setFont(QFont(UI_FONT, 9, QFont.Bold))
             lbl.setStyleSheet("color: #64748b; background: transparent; border: none;")
             h_layout.addWidget(lbl)
 
@@ -1901,7 +1878,7 @@ class MainWindow(FramelessWindow):
 
         self.btn_clear_log = PushButton(FIF.DELETE, "清空日志", log_bar)
         self.btn_clear_log.setObjectName("clearLogButton")
-        self.btn_clear_log.setFont(QFont("Microsoft YaHei UI", 9))
+        self.btn_clear_log.setFont(QFont(UI_FONT, 9))
         self.btn_clear_log.setFixedHeight(30)
         self.btn_clear_log.setStyleSheet("""
             PushButton#clearLogButton {
@@ -1927,7 +1904,7 @@ class MainWindow(FramelessWindow):
         self.log_text = TextEdit(self.log_card)
         self.log_text.setReadOnly(True)
         self.log_text.setFixedHeight(120)
-        self.log_text.setFont(QFont("Consolas", 9))
+        self.log_text.setFont(QFont(MONO_FONT, 9))
         self.log_text.setStyleSheet("""
             TextEdit {
                 background-color: #ffffff;
@@ -2296,11 +2273,13 @@ class MainWindow(FramelessWindow):
         menu.addAction(act_quit)
 
         self.tray_menu = menu
+        if sys.platform != 'win32':
+            self.tray.setContextMenu(menu)
         self.tray.activated.connect(self._on_tray_activated)
         self.tray.show()
 
     def _on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.Context:
+        if reason == QSystemTrayIcon.Context and sys.platform == 'win32':
             self._show_tray_menu()
         elif reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
             self._restore_from_tray()
@@ -2346,7 +2325,7 @@ class MainWindow(FramelessWindow):
 
     def closeEvent(self, event):
         """拦截窗口关闭按钮"""
-        if self.settings.get("minimizeToTray", True):
+        if self.settings.get("minimizeToTray", True) and QSystemTrayIcon.isSystemTrayAvailable():
             event.ignore()
             self.hide()
             self.tray.showMessage(APP_NAME, "已最小化至任务栏状态栏托盘，随时可点击图标打开。", QSystemTrayIcon.Information, 2000)

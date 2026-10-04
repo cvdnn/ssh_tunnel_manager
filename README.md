@@ -1,10 +1,12 @@
 # 隧道管家 (SSH Tunnel Manager)
 
-Windows SSH 本地端口转发桌面工具，使用 PySide6、QFluentWidgets 和系统 OpenSSH。每条启用的隧道由一个独立的 `ssh.exe` 进程维护。
+SSH 本地端口转发桌面工具，使用 PySide6、QFluentWidgets 和系统 OpenSSH。每条启用的隧道由一个独立的 SSH 进程维护。已加入 Windows、macOS、Linux 桌面适配；本机回归环境为 Windows，macOS/Linux 原生桌面验证尚待完成。
+
+macOS/Linux 的安装、数据目录、自启方式与验证边界见 [跨平台运行说明](docs/cross-platform.md)。新安装默认将数据保存到用户目录；已有项目 `data/` 配置继续沿用。下文 `data/`、`logs/` 均相对于选定的运行数据根目录。
 
 ## 安装与启动
 
-需要 Windows、Python 和 OpenSSH 客户端。本次验证环境为 Python 3.12，GUI 依赖版本固定在 `requirements.txt`。Fluent 与无边框窗口的包名分别是 [PySide6-Fluent-Widgets](https://pypi.org/project/PySide6-Fluent-Widgets/) 和 [PySideSix-Frameless-Window](https://pypi.org/project/PySideSix-Frameless-Window/)。
+需要桌面环境、Python 和 OpenSSH 客户端。本次验证环境为 Python 3.12，GUI 依赖版本固定在 `requirements.txt`。以下为 Windows 操作。Fluent 与无边框窗口的包名分别是 [PySide6-Fluent-Widgets](https://pypi.org/project/PySide6-Fluent-Widgets/) 和 [PySideSix-Frameless-Window](https://pypi.org/project/PySideSix-Frameless-Window/)。
 
 在项目目录中执行：
 
@@ -22,7 +24,7 @@ python -m venv .venv
 
 启动页在独立轻量进程中显示连续滑动动画，避免界面库加载和主窗口初始化造成进度条停顿；主窗口显示后自动关闭启动页。滑动条表示正在加载，不代表完成百分比。
 
-SSH 认证由 OpenSSH 和 `%USERPROFILE%\.ssh\config` 管理。程序使用 `BatchMode=yes`，不弹出密码输入框；请先配置可非交互登录的密钥或 SSH agent。
+SSH 认证由 OpenSSH 和用户 `~/.ssh/config` 管理（Windows 为 `%USERPROFILE%\.ssh\config`）。程序使用 `BatchMode=yes`，不弹出密码输入框；请先配置可非交互登录的密钥或 SSH agent。
 
 ## 功能
 
@@ -35,7 +37,7 @@ SSH 认证由 OpenSSH 和 `%USERPROFILE%\.ssh\config` 管理。程序使用 `Bat
 - 支持 IPv4/IPv6；监听 `0.0.0.0`、`*` 或 `::` 时，本机复制/连接地址使用相应的回环地址。IPv6 的 `host:port` 地址使用方括号。
 - 从用户 `~/.ssh/config` 或指定配置文件发现显式 `Host`，支持 `Include`、多个别名、大小写无关关键字。与设置中添加的手动连接合并展示，标明来源。同名项通过独立连接 ID 区分。通配及否定 Host 不单独列为连接。
 - 可折叠日志区采用单一卡片边界，显示连接状态和 SSH 错误输出；“清空日志”是无边框轻量操作，保留悬停和按下反馈，仅清空界面内容，历史文件保留。
-- 系统配置提供 SSH 路径、检查周期、关闭到托盘和 Windows 当前用户登录时自启设置。
+- 系统配置提供 SSH 路径、检查周期、关闭到托盘和当前用户登录时自启设置。
 - 系统托盘右键菜单贴在任务栏上方，并与托盘图标左边缘对齐；菜单项留有适当间距，支持恢复窗口、重连所有启用隧道和彻底退出。退出会停止管理的 SSH 进程。
 
 旧 `settings.json` 的 `sshAliases` 和旧隧道继续兼容，编辑旧隧道不会因为同名连接而切换目标。新连接建议通过“系统配置 → SSH 连接”管理。
@@ -162,6 +164,6 @@ tests/                     unittest 回归测试
 & .\scripts\test.ps1
 ```
 
-测试使用 Qt offscreen 平台和临时配置，覆盖绑定/客户端地址、IPv6、端口探测、连接状态、重连等待、真实本地子进程的 stderr 与清理、托盘颜色及窗口构造。测试不连接真实 SSH 主机，也不改写用户的隧道配置或注册表。
+Windows/Linux 测试使用 Qt offscreen 和临时配置；macOS 因原生无边框窗口依赖 Cocoa，需图形会话，可能短暂显示测试窗口。覆盖绑定/客户端地址、IPv6、端口探测、连接状态、重连等待、真实本地子进程的 stderr 与清理、托盘颜色及窗口构造。测试不连接真实 SSH 主机，也不改写用户的隧道配置或注册表。三个系统均可使用当前环境的 `python scripts/test.py` 运行测试、语法和依赖检查。
 
 `.gitignore` 排除虚拟环境、缓存、`data/` 和 `logs/`。新增测试在临时目录验证 Include、配置保存、旧引用兼容、同名来源、缺失连接、导出冲突、备份与并发修改检查；不改写用户 SSH 配置。离屏预览使用 `tests/fixtures/` 中的脱敏样例，脚本位于 `scripts/preview/`。

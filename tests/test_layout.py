@@ -5,9 +5,13 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import os
+import sys
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
 
 
 def load_module(name, filename):
@@ -19,7 +23,8 @@ def load_module(name, filename):
 
 class LayoutTests(unittest.TestCase):
     def test_runtime_paths_do_not_depend_on_current_directory(self):
-        paths = load_module("layout_paths", ROOT / "src" / "paths.py")
+        with patch.dict(os.environ, {'SSH_TUNNEL_MANAGER_HOME': str(ROOT)}):
+            paths = load_module("layout_paths", ROOT / "src" / "paths.py")
         self.assertEqual(paths.ROOT, ROOT)
         self.assertEqual(paths.CONFIG_FILE, ROOT / "data" / "tunnels.json")
         self.assertEqual(paths.SETTINGS_FILE, ROOT / "data" / "settings.json")

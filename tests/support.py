@@ -6,7 +6,7 @@ import sys
 import types
 from unittest.mock import Mock
 
-os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ.setdefault("QT_QPA_PLATFORM", "cocoa" if sys.platform == 'darwin' else "offscreen")
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src"
 if str(SOURCE) not in sys.path:

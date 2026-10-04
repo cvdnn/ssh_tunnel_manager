@@ -79,7 +79,10 @@ class TunnelTests(unittest.TestCase):
             splash.deleteLater()
 
     def test_startup_process_exits_when_parent_closes_pipe(self):
-        for executable in (Path(sys.executable), Path(sys.executable).with_name("pythonw.exe")):
+        executables = [Path(sys.executable)]
+        if sys.platform == 'win32':
+            executables.append(Path(sys.executable).with_name("pythonw.exe"))
+        for executable in executables:
             with self.subTest(executable=executable), patch.object(tm.sys, "executable", str(executable)):
                 splash = tm.StartupSplashProcess()
                 try:
@@ -151,11 +154,11 @@ runpy.run_path(sys.argv[0], run_name='__main__')
                                 window.open_system_settings_workspace()
                                 self.app.processEvents()
                             image = window.grab().toImage()
-                            self.assertEqual(image.width(), width)
+                            self.assertEqual(image.width(), round(width * window.devicePixelRatioF()))
                             expected = QColor("#94a3b8")
-                            for x, y in ((width // 2, 0), (0, image.height() // 2),
-                                         (width // 2, image.height() - 1),
-                                         (width - 1, image.height() // 2)):
+                            for x, y in ((image.width() // 2, 0), (0, image.height() // 2),
+                                         (image.width() // 2, image.height() - 1),
+                                         (image.width() - 1, image.height() // 2)):
                                 self.assertEqual(image.pixelColor(x, y), expected)
                 finally:
                     window.tray.hide()
@@ -204,7 +207,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
 
     def test_rdp_uses_configured_address(self):
         row = types.SimpleNamespace(tunnel=tunnel())
-        with patch.object(tm.subprocess, "Popen") as popen:
+        with patch.object(tm.sys, 'platform', 'win32'), patch.object(tm.subprocess, "Popen") as popen:
             tm.TunnelRowWidget._launch_rdp(row)
         popen.assert_called_once_with(["mstsc.exe", "/v:127.0.0.2:13389"])
 
@@ -744,7 +747,8 @@ runpy.run_path(sys.argv[0], run_name='__main__')
                         self.assertEqual(clear_button.height(), 30)
 
                     with self.subTest("clear button retains its font"):
-                        self.assertIn("Microsoft YaHei UI", clear_button.font().family())
+                        if sys.platform == 'win32':
+                            self.assertIn("Microsoft YaHei UI", clear_button.font().family())
                         self.assertEqual(clear_button.font().pointSize(), 9)
 
                     clear_button_style = clear_button.styleSheet()
@@ -822,7 +826,10 @@ runpy.run_path(sys.argv[0], run_name='__main__')
                         [action.text() for action in menu.actions() if not action.isSeparator()],
                         ["打开主界面", "重新连接全部隧道", "彻底退出"],
                     )
-                    self.assertIsNone(window.tray.contextMenu())
+                    if sys.platform == 'win32':
+                        self.assertIsNone(window.tray.contextMenu())
+                    else:
+                        self.assertIs(window.tray.contextMenu(), menu)
                     menu.popup(tm.QPoint(50, 50))
                     self.app.processEvents()
                     self.assertGreaterEqual(menu.actionGeometry(menu.actions()[0]).height(), 38)
@@ -830,7 +837,10 @@ runpy.run_path(sys.argv[0], run_name='__main__')
                     menu.hide()
                     with patch.object(window, "_show_tray_menu") as show_menu:
                         window._on_tray_activated(tm.QSystemTrayIcon.Context)
-                        show_menu.assert_called_once_with()
+                        if sys.platform == 'win32':
+                            show_menu.assert_called_once_with()
+                        else:
+                            show_menu.assert_not_called()
                 finally:
                     window.supervisor_timer.stop()
                     window.tray.hide()
