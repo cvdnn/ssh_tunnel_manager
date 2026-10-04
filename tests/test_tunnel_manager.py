@@ -1,6 +1,4 @@
 """Regression tests: no real SSH hosts, user configs, registry writes or visible windows."""
-import importlib.machinery
-import importlib.util
 import io
 import json
 import os
@@ -14,33 +12,11 @@ import types
 import unittest
 from unittest.mock import Mock, patch
 
-os.environ["QT_QPA_PLATFORM"] = "offscreen"
-ROOT = Path(__file__).resolve().parents[1]
-loader = importlib.machinery.SourceFileLoader("tunnel_manager", str(ROOT / "ssh_tunnel_manager.pyw"))
-spec = importlib.util.spec_from_loader(loader.name, loader)
-tm = importlib.util.module_from_spec(spec)
-loader.exec_module(tm)
+from support import tm, tunnel, controller, ROOT
 from PySide6.QtCore import QEvent, QRect
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QMenu, QWidget
-
-
-def tunnel(**overrides):
-    data = dict(name="test", sshHost="jump", localHost="127.0.0.2", localPort=13389,
-                remoteHost="10.0.0.2", remotePort=3389, enabled=True, autoReconnect=True)
-    data.update(overrides)
-    return tm.TunnelItem(data)
-
-
-def controller(*items):
-    window = types.SimpleNamespace(
-        tunnels=list(items), settings={"sshPath": "ssh.exe", "sshAliases": {}},
-        is_paused=False, running=True, log=Mock(), refresh_table=Mock(), tray=Mock(),
-        tunnel_jobs=Mock())
-    for name in ("check_tunnels_health", "_report_online_summary", "_queue_tunnel"):
-        setattr(window, name, types.MethodType(getattr(tm.MainWindow, name), window))
-    return window
 
 
 class TunnelTests(unittest.TestCase):
@@ -86,9 +62,13 @@ class TunnelTests(unittest.TestCase):
         try:
             splash.show()
             self.app.processEvents()
+            self.assertTrue(splash.progress._timer.isActive())
             first = splash.progress.grab().toImage()
-            QTest.qWait(120)
-            second = splash.progress.grab().toImage()
+            deadline = time.monotonic() + 1
+            second = first
+            while second == first and time.monotonic() < deadline:
+                QTest.qWait(30)
+                second = splash.progress.grab().toImage()
             self.assertNotEqual(first, second)
             splash.hide()
             frozen = splash.progress.grab().toImage()
@@ -125,7 +105,7 @@ def record_frame(self):
         output.write(str(time.monotonic()) + '\\n')
     original_update(self)
 QProgressBar.update = record_frame
-sys.argv = [{str(ROOT / 'ssh_tunnel_manager.pyw')!r}, '--startup-splash']
+sys.argv = [{str(ROOT / 'bin' / 'ssh-tunnel-manager.pyw')!r}, '--startup-splash']
 runpy.run_path(sys.argv[0], run_name='__main__')
 """
             proc = subprocess.Popen([sys.executable, "-c", code], stdin=subprocess.PIPE,
@@ -158,6 +138,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
                  patch.object(tm, "SETTINGS_FILE", str(Path(directory) / "settings.json")), \
                  patch.object(tm, "LOG_FILE", str(Path(directory) / "test.log")), \
                  patch.object(tm, "is_autostart_enabled", return_value=False), \
+                 patch.object(tm, "get_known_ssh_hosts", return_value=[]), \
                  patch.object(tm.QTimer, "singleShot"):
                 window = tm.MainWindow()
                 try:

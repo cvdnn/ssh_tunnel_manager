@@ -1,6 +1,6 @@
 """Render the actual Item widgets in all stages; no live connections."""
 from pathlib import Path
-from test_tunnel_manager import tm, tunnel, ROOT
+from support import tm, tunnel, ROOT
 from PySide6.QtGui import QFontDatabase
 
 app = tm.QApplication.instance() or tm.QApplication([])

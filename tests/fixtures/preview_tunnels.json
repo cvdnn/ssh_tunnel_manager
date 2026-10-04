@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Example tunnel",
+    "sshHost": "example.invalid",
+    "localHost": "127.0.0.1",
+    "localPort": 13389,
+    "remoteHost": "127.0.0.1",
+    "remotePort": 3389,
+    "enabled": false,
+    "autoReconnect": false
+  }
+]

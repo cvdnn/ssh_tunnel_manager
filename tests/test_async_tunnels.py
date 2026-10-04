@@ -6,7 +6,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from test_tunnel_manager import tm, tunnel
+from support import tm, tunnel
 
 
 class AsyncTunnelTests(unittest.TestCase):

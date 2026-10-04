@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *.log
 .review-backup/
+data/
+logs/
 
 # Local tunnel definitions may contain internal hosts and ports.
 tunnels.json
+ssh_connections.json
+settings.json

@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 from unittest.mock import patch
 
-from test_tunnel_manager import tm, ROOT
+from support import tm, ROOT
 from PySide6.QtCore import QEvent
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtTest import QTest
@@ -24,8 +24,9 @@ def main():
     splash.deleteLater()
     with tempfile.TemporaryDirectory() as directory:
         config = Path(directory) / "tunnels.json"
-        config.write_text((ROOT / "tunnels.json").read_text(encoding="utf-8"), encoding="utf-8")
+        config.write_bytes((ROOT / "tests" / "fixtures" / "preview_tunnels.json").read_bytes())
         with patch.object(tm, "CONFIG_FILE", str(config)), \
+             patch.object(tm, "SETTINGS_FILE", str(Path(directory) / "settings.json")), \
              patch.object(tm, "LOG_FILE", str(Path(directory) / "preview.log")), \
              patch.object(tm, "is_autostart_enabled", return_value=False), \
              patch.object(tm.QTimer, "singleShot"), \

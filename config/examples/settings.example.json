@@ -1,0 +1,6 @@
+{
+  "autostart": false,
+  "minimizeToTray": true,
+  "checkInterval": 4,
+  "sshAliases": {}
+}

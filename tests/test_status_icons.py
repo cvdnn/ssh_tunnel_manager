@@ -1,7 +1,7 @@
 """Status semantics and real Qt rendering, without external network access."""
 import unittest
 from unittest.mock import Mock, patch
-from test_tunnel_manager import tm, tunnel
+from support import tm, tunnel
 
 
 class StatusIconTests(unittest.TestCase):
