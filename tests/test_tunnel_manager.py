@@ -12,7 +12,7 @@ import types
 import unittest
 from unittest.mock import Mock, patch
 
-from support import tm, tunnel, controller, ROOT
+from support import tm, tunnel, controller, patch_screen, ROOT
 from PySide6.QtCore import QEvent, QRect
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
@@ -23,9 +23,13 @@ class TunnelTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = tm.QApplication.instance() or tm.QApplication([])
+        # Layout sizes follow the display, so pin one for reproducible geometry.
+        cls.screen = patch_screen()
+        cls.screen.start()
 
     @classmethod
     def tearDownClass(cls):
+        cls.screen.stop()
         # There is no app.exec() in offscreen tests; explicitly process deferred Qt deletes.
         cls.app.sendPostedEvents(None, QEvent.DeferredDelete)
 
@@ -447,7 +451,8 @@ runpy.run_path(sys.argv[0], run_name='__main__')
                     header_widgets += [w for w in window.findChildren(tm.PushButton)
                                        if w.text() == "新建隧道"]
                     centers = [w.mapTo(window, w.rect().center()).y() for w in header_widgets]
-                    self.assertLessEqual(max(centers) - min(centers), 1)
+                    # Each desktop font stack measures its own line height.
+                    self.assertLessEqual(max(centers) - min(centers), 2)
                     popen.assert_not_called()
                 finally:
                     window.supervisor_timer.stop()

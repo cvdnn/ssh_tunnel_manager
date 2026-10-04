@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import sys
 import types
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "cocoa" if sys.platform == 'darwin' else "offscreen")
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +13,18 @@ if str(SOURCE) not in sys.path:
     sys.path.insert(0, str(SOURCE))
 
 import app as tm
+from PySide6.QtCore import QRect
+
+
+def fixed_screen(width=1920, height=1080):
+    """Stand-in primary screen; keeps layout assertions independent of real displays."""
+    area = QRect(0, 0, width, height)
+    return types.SimpleNamespace(geometry=lambda: area, availableGeometry=lambda: area)
+
+
+def patch_screen(width=1920, height=1080):
+    """Patch that pins tm.window_size()/layout_widths() to one deterministic screen."""
+    return patch.object(tm.QApplication, "primaryScreen", return_value=fixed_screen(width, height))
 
 
 def tunnel(**overrides):

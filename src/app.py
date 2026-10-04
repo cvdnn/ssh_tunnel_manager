@@ -32,7 +32,7 @@ from ssh_connections import (discover_hosts, connection_args, load_connections,
                              save_connections, atomic_write_json, validate_connection)
 from connection_settings import ConnectionSettingsEditor
 
-from PySide6.QtCore import Qt, QTimer, Signal, QObject, QSize, QPoint, QRectF
+from PySide6.QtCore import Qt, QTimer, Signal, QObject, QSize, QPoint, QRect, QRectF
 from PySide6.QtGui import QIcon, QColor, QFont, QPixmap, QPainter, QBrush, QPen, QCursor, QPainterPath
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -44,6 +44,38 @@ from PySide6.QtWidgets import (
 # Empty family lets Qt select the desktop font and CJK fallback.
 UI_FONT = "Microsoft YaHei UI" if sys.platform == 'win32' else ""
 MONO_FONT = "Consolas" if sys.platform == 'win32' else ("Menlo" if sys.platform == 'darwin' else "monospace")
+
+# Layout baseline in Qt logical pixels. The real window size is clamped to the
+# screen so the fixed layout also fits small laptop and low-resolution displays
+# on Windows, macOS and Linux.
+MAIN_WIDTH = 1100
+MAIN_HEIGHT = 660
+WORKSPACE_WIDTH = 420
+MIN_WORKSPACE_WIDTH = 320
+
+
+def layout_widths(expanded=False, screen=None):
+    """Main and workspace widths for one layout state on this screen."""
+    if screen is None:
+        screen = QApplication.primaryScreen()
+    area = screen.availableGeometry() if screen is not None else QRect(
+        0, 0, MAIN_WIDTH + WORKSPACE_WIDTH, MAIN_HEIGHT)
+    if not expanded:
+        return min(MAIN_WIDTH, area.width()), 0
+    # The workspace never drops below a usable width and the window never grows
+    # past the screen; on narrow displays the table area gives way first.
+    workspace = min(WORKSPACE_WIDTH, max(MIN_WORKSPACE_WIDTH, area.width() - MAIN_WIDTH))
+    return min(MAIN_WIDTH, max(1, area.width() - workspace)), workspace
+
+
+def window_size(expanded=False, screen=None):
+    """Fixed window size for one layout state, clamped to the screen's area."""
+    main, workspace = layout_widths(expanded, screen)
+    if screen is None:
+        screen = QApplication.primaryScreen()
+    height = min(MAIN_HEIGHT, (screen.availableGeometry().height() if screen is not None
+                               else MAIN_HEIGHT))
+    return QSize(main + workspace, height)
 
 
 class WindowOutline(QWidget):
@@ -1571,7 +1603,9 @@ class MainWindow(FramelessWindow):
         super().__init__()
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(create_app_logo_icon())
-        self.setFixedSize(1100, 660)
+        self._main_width, _ = layout_widths(False)
+        self._workspace_width = layout_widths(True)[1]
+        self.setFixedSize(window_size(False))
         self.setResizeEnabled(False)
         self.setWindowFlag(Qt.WindowMaximizeButtonHint, False)
         if sys.platform == 'win32':
@@ -1744,7 +1778,7 @@ class MainWindow(FramelessWindow):
 
         self.workspace_title_bar = QFrame(tb)
         self.workspace_title_bar.setObjectName("workspaceTitleBar")
-        self.workspace_title_bar.setFixedSize(420, tb.height())
+        self.workspace_title_bar.setFixedSize(self._workspace_width, tb.height())
         self.workspace_title_bar.setStyleSheet("""
             QFrame#workspaceTitleBar {
                 background-color: #f8fafc;
@@ -1782,7 +1816,7 @@ class MainWindow(FramelessWindow):
 
         central = QWidget(self.content_row)
         self.central = central
-        central.setFixedWidth(1100)
+        central.setFixedWidth(self._main_width)
         central.setStyleSheet("background-color: #f8fafc;")
         content_layout.addWidget(central)
 
@@ -1918,7 +1952,7 @@ class MainWindow(FramelessWindow):
         layout.addWidget(self.log_card)
 
         self.tunnel_workspace = TunnelWorkspace(self.content_row)
-        self.tunnel_workspace.setFixedWidth(420)
+        self.tunnel_workspace.setFixedWidth(self._workspace_width)
         content_layout.addWidget(self.tunnel_workspace)
         self.tunnel_workspace.close_requested.connect(self._collapse_workspace)
         self.tunnel_workspace.create_requested.connect(self._create_tunnel_from_workspace)
@@ -1926,7 +1960,7 @@ class MainWindow(FramelessWindow):
         self.tunnel_workspace.hide()
 
         self.settings_workspace = SystemSettingsWorkspace(self.settings, self.content_row)
-        self.settings_workspace.setFixedWidth(420)
+        self.settings_workspace.setFixedWidth(self._workspace_width)
         content_layout.addWidget(self.settings_workspace)
         self.settings_workspace.close_requested.connect(self._collapse_workspace)
         self.settings_workspace.save_requested.connect(self._save_settings_from_workspace)
@@ -2057,14 +2091,31 @@ class MainWindow(FramelessWindow):
         self._queue_tunnel(t, "start")
         self.refresh_table()
 
+    def _apply_layout(self, expanded):
+        """Recompute every fixed width from the screen the window sits on."""
+        self._main_width, workspace = layout_widths(expanded)
+        if workspace:
+            self._workspace_width = workspace
+        self.central.setFixedWidth(self._main_width)
+        self.tunnel_workspace.setFixedWidth(self._workspace_width)
+        self.settings_workspace.setFixedWidth(self._workspace_width)
+        self.workspace_title_bar.setFixedSize(self._workspace_width, self.titleBar.height())
+        self.setFixedSize(window_size(expanded))
+
     def _collapse_workspace(self):
         self.tunnel_workspace.hide()
         self.settings_workspace.hide()
         self.workspace_title_bar.hide()
-        self.setFixedSize(1100, 660)
+        self._apply_layout(False)
         if self.selected_index is not None:
             self.selected_index = None
             self.refresh_table()
+
+    def _show_workspace(self, title):
+        """Expand by the workspace width the current screen can actually show."""
+        self._apply_layout(True)
+        self.workspace_title.setText(title)
+        self.workspace_title_bar.show()
 
     def select_tunnel(self, idx: int):
         if not 0 <= idx < len(self.tunnels):
@@ -2078,9 +2129,7 @@ class MainWindow(FramelessWindow):
         ssh_opts = self.connection_options()
         workspace.set_ssh_options(ssh_opts)
         workspace.load_tunnel(idx, self.tunnels[idx])
-        self.workspace_title.setText("隧道详情")
-        self.setFixedSize(1520, 660)
-        self.workspace_title_bar.show()
+        self._show_workspace("隧道详情")
         workspace.show()
         self.refresh_table()
 
@@ -2096,9 +2145,7 @@ class MainWindow(FramelessWindow):
         ssh_opts = self.connection_options()
         workspace.set_ssh_options(ssh_opts)
         workspace.reset_form()
-        self.workspace_title.setText("新建隧道")
-        self.setFixedSize(1520, 660)
-        self.workspace_title_bar.show()
+        self._show_workspace("新建隧道")
         workspace.show()
         workspace.edit_name.setFocus()
         workspace.edit_name.selectAll()
@@ -2147,9 +2194,7 @@ class MainWindow(FramelessWindow):
             self.refresh_table()
         workspace.load_settings(self.settings)
         self._load_connection_editor()
-        self.workspace_title.setText("系统配置")
-        self.setFixedSize(1520, 660)
-        self.workspace_title_bar.show()
+        self._show_workspace("系统配置")
         workspace.show()
 
     def _save_settings_from_workspace(self, data: dict):

@@ -164,9 +164,16 @@ class ConnectionSettingsEditor(QWidget):
         self._hosts = hosts
         self._rebuild()
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # The workspace width follows the screen, so elide against the real space.
+        self._show_config_path()
+
     def _show_config_path(self):
         text = '入口文件：' + self._config_path
-        self.config_path_label.setText(self.config_path_label.fontMetrics().elidedText(text, Qt.TextElideMode.ElideMiddle, 330))
+        available = max(120, self.width() - 24)
+        self.config_path_label.setText(self.config_path_label.fontMetrics().elidedText(
+            text, Qt.TextElideMode.ElideMiddle, available))
         self.config_path_label.setToolTip(text)
 
     def _mark_dirty(self):

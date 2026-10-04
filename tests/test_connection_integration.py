@@ -6,13 +6,19 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from support import tm, tunnel, controller
+from support import tm, tunnel, controller, patch_screen
 
 
 class ConnectionIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = tm.QApplication.instance() or tm.QApplication([])
+        cls.screen = patch_screen()
+        cls.screen.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.screen.stop()
 
     @contextmanager
     def window(self, settings=None, records=None):
