@@ -30,13 +30,20 @@ class MacOSAppTests(unittest.TestCase):
         self.assertEqual(payload['CFBundleShortVersionString'], platform_support.BUNDLE_VERSION)
         self.assertEqual(payload['CFBundleVersion'], platform_support.BUNDLE_VERSION)
 
-    def test_plist_binds_executable_without_claiming_any_extension(self):
+    def test_plist_binds_executable_and_offers_pyw_without_claiming_it(self):
         payload = BUILDER.bundle_plist(with_icon=True)
         self.assertEqual(payload['CFBundleExecutable'], BUILDER.EXECUTABLE)
         self.assertEqual(payload['CFBundleIconFile'], 'AppIcon')
-        # The bundle is the double-click target; claiming .pyw would redirect every such file.
-        self.assertNotIn('CFBundleDocumentTypes', payload)
+        # Alternate rank only puts the bundle in Finder's "Open With" list; Owner would
+        # take over every .pyw file on the machine, and Default would do the same silently.
+        document = payload['CFBundleDocumentTypes'][0]
+        self.assertEqual(document['CFBundleTypeExtensions'], [BUILDER.PYW_EXTENSION])
+        self.assertEqual(document['LSHandlerRank'], 'Alternate')
         self.assertNotIn('CFBundleIconFile', BUILDER.bundle_plist(with_icon=False))
+
+    def test_pyw_association_stays_opt_in(self):
+        self.assertFalse(BUILDER.parse_arguments([]).associate_pyw)
+        self.assertTrue(BUILDER.parse_arguments(['--associate-pyw']).associate_pyw)
 
     def test_launcher_quotes_paths_and_validates_the_interpreter(self):
         interpreter = Path('/tmp/中文 venv/bin/python')

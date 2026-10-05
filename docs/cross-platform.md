@@ -22,9 +22,11 @@ macOS 没有 `pythonw`，Finder 也不会执行脚本文件，所以 `.pyw` 不�
 .venv/bin/python scripts/make_macos_app.py
 ```
 
-默认写入 `~/Applications/SSH Tunnel Manager.app`（`--output` 换目录、`--force` 覆盖、`--no-icon` 跳过图标）。双击该 `.app` 打开界面，可在 Dock 图标右键 →“选项 → 在 Dock 中保留”常驻。bundle 不声明任何扩展名关联——把 `.pyw` 全局指向本程序会改变机器上所有同类文件的行为。
+默认写入 `~/Applications/SSH Tunnel Manager.app`（`--output` 换目录、`--force` 覆盖、`--no-icon` 跳过图标）。双击该 `.app` 打开界面，可在 Dock 图标右键 →“选项 → 在 Dock 中保留”常驻。
 
-已知边界：启动器记录生成时的解释器与入口绝对路径，移动项目或重建 `.venv` 后必须重跑脚本，解释器缺失时弹原生提示框。签名是 ad-hoc 的，`spctl` 判定为 `rejected`；本机自建文件没有隔离属性可直接双击，压缩分发后首次需右键 →“打开”，要免拦截须用 Developer ID 签名并公证。从启动器运行的进程仍以虚拟环境解释器为可执行文件，Dock 与菜单栏可能显示为 `python`；需要独立图标、应用名和免 Python 的分发产物请改用下文的自包含打包。
+bundle 以 `Alternate` 级别声明 `.pyw` 文档类型，只让它出现在右键“打开方式”的候选列表里，不改变系统默认程序。据此单次用脚本入口打开界面：右键 `ssh_tunnel_manager.pyw` →“打开方式 → SSH Tunnel Manager”。真正的双击要求改默认程序，须显式进行：重跑脚本时加 `--associate-pyw`，或在该文件的“显示简介 → 打开方式”里点“全部…”。此后机器上所有 `.pyw` 都会启动本程序，所以这一步不默认执行；`.py` 的编辑器关联不受影响（LaunchServices 为 `.pyw` 合成独立的 `dyn.ah62d4rv4ge81a8p1` 类型）。
+
+已知边界：启动器记录生成时的解释器与入口绝对路径，移动项目或重建 `.venv` 后必须重跑脚本，解释器缺失时弹原生提示框。shell 主程序收不到 Finder 投递的文档事件，被打开的路径不会进命令行，启动器始终执行 `bin/ssh-tunnel-manager.pyw`；入口用 `parse_known_args()` 容忍 Dock 拖放等场景传入的多余路径。签名是 ad-hoc 的，`spctl` 判定为 `rejected`；本机自建文件没有隔离属性可直接双击，压缩分发后首次需右键 →“打开”，要免拦截须用 Developer ID 签名并公证。从启动器运行的进程仍以虚拟环境解释器为可执行文件，Dock 与菜单栏可能显示为 `python`；需要独立图标、应用名和免 Python 的分发产物请改用下文的自包含打包。
 
 ### 自包含打包
 

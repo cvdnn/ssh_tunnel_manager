@@ -2,8 +2,11 @@
 
 macOS has no ``pythonw`` and Finder never executes a plain script, so the bundle ships a
 POSIX shell launcher that ``exec``s the checkout interpreter on ``bin/ssh-tunnel-manager.pyw``.
-The bundle is the double-click target — no extension is claimed, because redirecting every
-``.pyw`` on the machine to this program would be a side effect larger than the launcher.
+
+The bundle stays a double-click target of its own by default. It lists ``.pyw`` as an
+Alternate-rank document type, which only makes it selectable in Finder's "Open With" menu;
+nothing about the current default handler changes until the user opts in — either there, or
+once with ``--associate-pyw``.
 """
 
 import argparse
@@ -24,6 +27,9 @@ from platform_support import APP_DISPLAY_NAME, BUNDLE_VERSION  # noqa: E402
 APP_NAME = 'SSH Tunnel Manager'
 BUNDLE_IDENTIFIER = 'local.ssh-tunnel-manager.app'
 EXECUTABLE = 'ssh-tunnel-manager'
+PYW_EXTENSION = 'pyw'
+# LaunchServices synthesizes this identifier from the extension; no declared type exists for .pyw.
+PYW_UNIFORM_TYPE_IDENTIFIER = 'dyn.ah62d4rv4ge81a8p1'
 ICON_SIZES = (16, 32, 128, 256, 512)
 LSREGISTER = Path('/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks'
                   '/LaunchServices.framework/Versions/A/Support/lsregister')
@@ -51,7 +57,7 @@ def launcher_text(interpreter, entry):
 
 
 def bundle_plist(with_icon):
-    """Info.plist contents: the application identity Finder and the Dock read."""
+    """Info.plist contents: application identity plus the selectable ``.pyw`` document type."""
     payload = {
         'CFBundleName': APP_DISPLAY_NAME,
         'CFBundleDisplayName': APP_DISPLAY_NAME,
@@ -61,6 +67,13 @@ def bundle_plist(with_icon):
         'CFBundlePackageType': 'APPL',
         'CFBundleShortVersionString': BUNDLE_VERSION,
         'CFBundleVersion': BUNDLE_VERSION,
+        # Alternate keeps the bundle out of the default-handler election; Owner would seize every .pyw.
+        'CFBundleDocumentTypes': [{
+            'CFBundleTypeName': 'Python GUI Script',
+            'CFBundleTypeExtensions': [PYW_EXTENSION],
+            'CFBundleTypeRole': 'Viewer',
+            'LSHandlerRank': 'Alternate',
+        }],
         'LSMinimumSystemVersion': '11.0',
         'NSHighResolutionCapable': True,
     }
@@ -120,14 +133,31 @@ def sign(app):
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
 
 
-def main(argv=None):
+def associate_pyw():
+    """Opt-in only: make the bundle the default handler for .pyw, leaving the .py editor alone."""
+    try:
+        import LaunchServices as services
+    except ImportError:
+        return False
+    status = services.LSSetDefaultRoleHandlerForContentType(PYW_UNIFORM_TYPE_IDENTIFIER,
+                                                            services.kLSRolesAll, BUNDLE_IDENTIFIER)
+    return status == 0
+
+
+def parse_arguments(argv):
     parser = argparse.ArgumentParser(description='生成 macOS 启动器 app bundle')
     parser.add_argument('--output', default=str(Path.home() / 'Applications'),
                         help='app bundle 的父目录，默认 ~/Applications')
     parser.add_argument('--interpreter', default=sys.executable, help='启动界面使用的 Python 解释器')
     parser.add_argument('--force', action='store_true', help='覆盖已存在的 app bundle')
     parser.add_argument('--no-icon', action='store_true', help='跳过 AppIcon.icns 生成')
-    args = parser.parse_args(argv)
+    parser.add_argument('--associate-pyw', action='store_true',
+                        help='额外把 .pyw 的默认打开程序设为该 bundle（机器级改动，默认不做）')
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_arguments(argv)
     if sys.platform != 'darwin':
         print('仅 macOS 需要 app bundle；Windows/Linux 请直接使用 bin 下的入口。')
         return 1
@@ -153,6 +183,15 @@ def main(argv=None):
     if not signed:
         print('提示：未完成代码签名，首次双击若被 Gatekeeper 拦截请右键选择“打开”。')
     print('双击 {} 打开界面；在 Dock 上右键图标 →“选项 → 在 Dock 中保留”即可常驻。'.format(app.name))
+    if args.associate_pyw:
+        if associate_pyw():
+            print('已将 .{} 的默认打开程序指向该 bundle：双击任意 .{} 文件都会启动本程序。'
+                  .format(PYW_EXTENSION, PYW_EXTENSION))
+        else:
+            print('默认程序设置失败（LaunchServices 不可用），请在 Finder 的“显示简介 → 打开方式”里手工选择。')
+    else:
+        print('双击 ssh_tunnel_manager.{}：右键该文件 →“打开方式 → {}”即可单次启动，不改动系统默认程序。'
+              .format(PYW_EXTENSION, APP_NAME))
     print('移动程序或重建虚拟环境后请重新运行本脚本（启动器记录的是绝对路径）。')
     return 0
 
