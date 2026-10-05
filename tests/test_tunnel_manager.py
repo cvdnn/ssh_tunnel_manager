@@ -138,7 +138,11 @@ runpy.run_path(sys.argv[0], run_name='__main__')
                 self.assertEqual(proc.wait(timeout=10), 0)
                 timestamps = [float(line) for line in frames.read_text().splitlines()]
                 self.assertGreaterEqual(sum(blocked_at <= t <= resumed_at for t in timestamps), 6)
-                self.assertEqual(proc.stderr.read(), b"")
+                stderr = proc.stderr.read().decode(errors='replace').splitlines()
+                unexpected = [line for line in stderr if not line.startswith(
+                    ('QFontDatabase: Cannot find font directory ',
+                     'Note that Qt no longer ships fonts.'))]
+                self.assertEqual(unexpected, [])
             finally:
                 if proc.poll() is None:
                     proc.kill()

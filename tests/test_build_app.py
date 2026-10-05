@@ -152,11 +152,29 @@ class PyInstallerArgumentsTests(unittest.TestCase):
         self.assertNotIn('--collect-data', command)
 
     def test_logo_ships_inside_the_bundle_payload(self):
-        command = packager.pyinstaller_command(options(), Path('/tmp/work'), Path('/tmp/AppIcon.icns'))
+        icon = Path('/tmp/AppIcon.icns')
+        command = packager.pyinstaller_command(options(), Path('/tmp/work'), icon)
         source, _, destination = command[command.index('--add-data') + 1].partition(os.pathsep)
         self.assertEqual(destination, 'assets')
         self.assertTrue((Path(source) / 'app_logo.png').is_file())
-        self.assertEqual(command[command.index('--icon') + 1], '/tmp/AppIcon.icns')
+        self.assertEqual(command[command.index('--icon') + 1], str(icon))
+
+    def test_windows_bundle_drops_collected_icu_that_shadows_the_system_dll(self):
+        with tempfile.TemporaryDirectory() as folder:
+            bundle = Path(folder)
+            internal = bundle / '_internal'
+            internal.mkdir()
+            conflicting = [internal / 'icuuc.dll', internal / 'icudt78.dll']
+            for path in conflicting:
+                path.write_bytes(b'not the Windows system ICU')
+            unrelated = internal / 'Qt6Core.dll'
+            unrelated.write_bytes(b'keep me')
+
+            removed = packager.remove_collected_windows_icu(bundle)
+
+            self.assertEqual(removed, conflicting)
+            self.assertTrue(all(not path.exists() for path in conflicting))
+            self.assertTrue(unrelated.is_file())
 
 
 class WindowsIconTests(unittest.TestCase):

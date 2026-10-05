@@ -238,6 +238,18 @@ def windows_installer(bundle, args, base_filename):
     return execute([str(iscc), '/Qp', str(script)], '生成 Windows 安装向导') == 0
 
 
+def remove_collected_windows_icu(bundle):
+    """Let Qt use Windows' ICU instead of a foreign DLL found on the build host."""
+    internal = Path(bundle) / '_internal'
+    candidates = [internal / 'icuuc.dll', *sorted(internal.glob('icudt*.dll'))]
+    removed = []
+    for path in candidates:
+        if path.is_file():
+            path.unlink()
+            removed.append(path)
+    return removed
+
+
 def smoke_test(program, name):
     """Start the built program with an isolated data directory until it logs its startup line.
 
@@ -343,6 +355,11 @@ def main(argv=None):
         patch_macos_plist(bundle, args.name, args.version)
         if not sign(bundle):
             print('提示：未完成 ad-hoc 签名，首次双击可能被 Gatekeeper 拦截。')
+    else:
+        removed_icu = remove_collected_windows_icu(bundle)
+        if removed_icu:
+            print('移除与 Windows 系统 ICU 冲突的构建机 DLL：' +
+                  ', '.join(path.name for path in removed_icu))
 
     if args.smoke_test and not smoke_test(program, bundle.name):
         return 1

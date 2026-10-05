@@ -155,9 +155,12 @@ class PlatformSupportTests(unittest.TestCase):
                 arguments = run.call_args.args[0]
                 self.assertEqual(arguments[0], launcher)
                 self.assertEqual(arguments[-1], '需要迁移')
-        with patch.object(platform.sys, 'platform', 'win32'), patch.object(platform.subprocess, 'run') as run:
+        with patch.object(platform.sys, 'platform', 'win32'), \
+                patch.object(platform.subprocess, 'run') as run, \
+                patch('ctypes.windll.user32.MessageBoxW') as message_box:
             platform.show_error('需要迁移')
             run.assert_not_called()
+            message_box.assert_called_once()
 
     def test_startup_error_without_a_desktop_notifier_only_prints(self):
         platform = self.adapter()
